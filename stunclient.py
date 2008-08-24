@@ -623,7 +623,7 @@ class STUNClient:
 
 if __name__ == '__main__':
     sc = STUNClient()
-    sc.setServerAddr('stun.fwdnet.net')
+    sc.setServerAddr('stun.ekiga.net')
     #sc.setServerAddr('stun.l.google.com', 19302)
     sc.createSocket()
     print 'NAT TYPE:', sc.natType2String(sc.getNatType())

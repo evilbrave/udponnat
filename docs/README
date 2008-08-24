@@ -51,8 +51,8 @@
 
         # 创建STUNClient实例
         sc = STUNClient()
-        # 设置用到的STUN服务器地址为'stun.fwdnet.net',使用默认端口3478
-        sc.setServerAddr('stun.fwdnet.net')
+        # 设置用到的STUN服务器地址为'stun.ekiga.net',使用默认端口3478
+        sc.setServerAddr('stun.ekiga.net')
         # 例程,创建内部sock
         sc.createSocket()
         # getNatType()返回所在网络类型,natType2String()将返回类型转换为字符串描述
