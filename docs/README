@@ -1,0 +1,63 @@
+            使用STUN协议了解所在网络的NAT类型(附Python实现)
+                Du XiaoGang<dugang@188.com>
+
+    在P2P应用盛行的今天,很多人对处在不同局域网中的主机间的通信方式都不陌生.而UDP穿透作为这样一个主流技术也受到了很多人的关注,在UDP穿透中有一个基本点就是要知道主机自身所在的网络类型以及经NAT映射后的公网IP地址.
+
+    STUN(Simple Traversal of UDP over NATs,NAT的UDP简单穿越)是一种网络协议,它允许位于NAT(或多重NAT)后的客户端找出自己的公网地址,查出自己位于哪种类型的NAT之后以及NAT为某一个本地端口所绑定的Internet端端口.这些信息被用来在两个同时处于NAT 路由器之后的主机之间建立UDP通信.该协议由RFC 3489定义.
+
+    STUN协议是一个客户机/服务器协议,在公网上存在着大量的STUN服务器,用户可以通过在自己主机上运行STUN客户端远程连接STUN服务器来确认自身的网络状况.
+
+    客户端主机所在网络可以分为以下类型:
+    1, Opened: 即主机拥有公网IP,并且没有防火墙,可自由与外部通信.
+    2, Full Cone NAT: 主机前有NAT设备,NAT规则如下:
+        从主机UDP端口A发出的数据包都会对应到NAT设备出口IP的端口B,并且从任意外部地址发送到该NAT设备UDP端口B的包都会被转到主机端口A.
+    3, Restricted cone NAT: 主机前有NAT设备,NAT规则如下:
+        从主机UDP端口A发出的数据包都会对应到NAT设备出口IP的端口B,但只有从之前该主机发出包的目的IP发出到该NAT设备UDP端口B的包才会被转到主机端口A.
+    4, Port Restricted cone NAT: 主机前有NAT设备,NAT规则如下:
+        从主机UDP端口A发出的数据包都会对应到NAT设备出口IP的端口B,但只有从之前该主机发出包的目的IP/PORT发出到该NAT设备UDP端口B的包才会被转到主机端口A.
+    5, Symmetric UDP Firewall: 主机出口处没有NAT设备,但有防火墙,且防火墙规则如下:
+        从主机UDP端口A发出的数据包保持源地址,但只有从之前该主机发出包的目的IP/PORT发出到该主机端口A的包才能通过防火墙.
+    6, Symmetric NAT: 主机前有NAT设备,NAT规则如下:
+        即使数据包都从主机UDP端口A发出,但只要目的地址不同,NAT设备就会为之分配不同的出端口B.
+    7, Blocked: 防火墙限制UDP通信.
+
+    再来说STUN服务器,STUN服务器运行在UDP协议之上,它具有两个固定公网地址,能完成以下几个功能:
+    1, 告诉STUN客户端经NAT设备映射后的公网地址.
+    2, 根据STUN客户端的要求,从服务器的其他不同IP或端口向客户端回送包.
+
+    如何根据STUN服务器提供的功能来确认网络类型呢?rfc3489给出了如下图过程:
+
+    <img src="discover.png"/>
+
+    这个过程可概括如下:
+    1, STUN客户端向STUN服务器发送请求,要求得到自身经NAT映射后的地址:
+        a,收不到服务器回复,则认为UDP被防火墙阻断,不能通信,网络类型:Blocked.
+        b,收到服务器回复,对比本地地址,如果相同,则认为无NAT设备,进入第2步,否则认为有NAT设备,进入3步.
+    2, (已确认无NAT设备)STUN客户端向STUN服务器发送请求,要求服务器从其他IP和PORT向客户端回复包:
+        a,收不到服务器从其他IP地址的回复,认为包被前置防火墙阻断,网络类型:Symmetric UDP Firewall.
+        b,收到则认为客户端处在一个开放的网络上,网络类型:Opened.
+    3, (已确认存在NAT设备)STUN客户端向STUN服务器发送请求,要求服务器从其他IP和PORT向客户端回复包:
+        a,收不到服务器从其他IP地址的回复,认为包被前置NAT设备阻断,进入第4步.
+        b,收到则认为NAT设备类型为Full Cone,即网络类型:Full Cone NAT.
+    4, STUN客户端向STUN服务器的另外一个IP地址发送请求,要求得到自身经NAT映射后的地址,并对比之:
+        a,地址不相同,则网络类型:Symmetric NAT.
+        b,相同则认为是Restricted NAT,进入第5步,进一步确认类型.
+    5, (已确认Restricted NAT设备)STUN客户端向STUN服务器发送请求,要求服务器从相同IP的其他PORT向客户端回复包:
+        a,收不到服务器从其他PORT地址的回复,认为包被前置NAT设备阻断,网络类型:Port Restricted cone NAT.
+        b,收到则认为网络类型: Restricted cone NAT.
+
+    说完了原理,再来说说实现,做这个是因为有东西用到了P2P通信,但找不到合适的STUN的Python实现,因而自己做了一个,用法很简单,stunclient.py本身就是一个实例,直接运行该脚本,它会告诉你目前主机所处网络的类型及出口IP/PORT.
+    简单描述一下main函数:
+
+        # 创建STUNClient实例
+        sc = STUNClient()
+        # 设置用到的STUN服务器地址为'stun.fwdnet.net',使用默认端口3478
+        sc.setServerAddr('stun.fwdnet.net')
+        # 例程,创建内部sock
+        sc.createSocket()
+        # getNatType()返回所在网络类型,natType2String()将返回类型转换为字符串描述
+        print 'NAT TYPE:', sc.natType2String(sc.getNatType())
+        # getMappedAddr()返回NAT映射后的公网IP/PORT
+        print 'MAPPED ADDRESS:', sc.getMappedAddr()
+        # 最后,关闭sc实例
+        sc.close()
