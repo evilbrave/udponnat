@@ -23,7 +23,7 @@
 #                                                                           #
 #############################################################################
 
-import socket, struct, time
+import socket, struct, time, re
 
 class STUNError(Exception):
     pass
@@ -86,9 +86,15 @@ class STUNClient:
         self.changedIP = ''
         self.changedPort = -1
 
-    def setServerAddr(self, ip, port=3478):
-        self.serverIP = ip 
-        self.serverPort = port
+    def setServerAddr(self, host, port=3478):
+        # is host in ***.***.***.***?
+        if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', host) == None:
+            # hostname
+            self.serverIP = socket.gethostbyname(host)
+            self.serverPort = port
+        else:
+            self.serverIP = host
+            self.serverPort = port
 
     def getServerAddr(self):
         return (self.serverIP, self.serverPort)
@@ -617,8 +623,8 @@ class STUNClient:
 
 if __name__ == '__main__':
     sc = STUNClient()
-    sc.setServerAddr('69.0.208.27')
-    #sc.setServerAddr('72.14.235.125', 19302)
+    sc.setServerAddr('stun.fwdnet.net')
+    #sc.setServerAddr('stun.l.google.com', 19302)
     sc.createSocket()
     print 'NAT TYPE:', sc.natType2String(sc.getNatType())
     print 'MAPPED ADDRESS:', sc.getMappedAddr()
