@@ -1,26 +1,26 @@
 #! /usr/bin/env python
 
 #############################################################################
-#
-#   File: stunclient.py
-#   
-#   Copyright (C) 2008 Du XiaoGang <dugang@188.com>
-#   
-#   This file is part of UDPonNAT.
-#   
-#   UDPonNAT is free software: you can redistribute it and/or modify
-#   it under the terms of the GNU General Public License as 
-#   published by the Free Software Foundation, either version 3 of the 
-#   License, or (at your option) any later version.
-#   
-#   UDPonNAT is distributed in the hope that it will be useful,
-#   but WITHOUT ANY WARRANTY; without even the implied warranty of
-#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#   GNU General Public License for more details.
-#   
-#   You should have received a copy of the GNU General Public License
-#   along with UDPonNAT.  If not, see <http://www.gnu.org/licenses/>.
-#
+#                                                                           #
+#   File: stunclient.py                                                     #
+#                                                                           #
+#   Copyright (C) 2008 Du XiaoGang <dugang@188.com>                         #
+#                                                                           #
+#   This file is part of UDPonNAT.                                          #
+#                                                                           #
+#   UDPonNAT is free software: you can redistribute it and/or modify        #
+#   it under the terms of the GNU General Public License as                 #
+#   published by the Free Software Foundation, either version 3 of the      #
+#   License, or (at your option) any later version.                         #
+#                                                                           #
+#   UDPonNAT is distributed in the hope that it will be useful,             #
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of          #
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the           #
+#   GNU General Public License for more details.                            #
+#                                                                           #
+#   You should have received a copy of the GNU General Public License       #
+#   along with UDPonNAT.  If not, see <http://www.gnu.org/licenses/>.       #
+#                                                                           #
 #############################################################################
 
 import socket, struct, time
@@ -57,6 +57,8 @@ class STUNClient:
     RET_TEST_I2_IP_DIFF = 6
     RET_TEST_III_NO_RESP = 7
     RET_TEST_III_GOT_RESP = 8
+    RET_TEST_IV_LOCAL = 9
+    RET_TEST_IV_DIFF = 10
     # network types
     NET_TYPE_OPENED = 0
     NET_TYPE_UDP_BLOCKED = 1
@@ -65,6 +67,7 @@ class STUNClient:
     NET_TYPE_SYM_NAT = 4
     NET_TYPE_REST_NAT = 5
     NET_TYPE_PORTREST_NAT = 6
+    NET_TYPE_SYM_NAT_LOCAL = 7
 
     def __init__(self):
         self.sock = None
@@ -169,23 +172,23 @@ class STUNClient:
                        /\                         /\                    |
         Symmetric  N  /  \       +--------+   N  /  \                   V
            NAT  <--- / IP \<-----|  Test  |<--- /Resp\               Open
-                     \Same/      |   I    |     \ ?  /               Internet
-                      \? /       +--------+      \  /
-                       \/                         \/
-                       |                           |Y
-                       |                           |
-                       |                           V
-                       |                           Full
-                       |                           Cone
-                       V              /\
-                   +--------+        /  \ Y
-                   |  Test  |------>/Resp\---->Restricted
-                   |   III  |       \ ?  /
-                   +--------+        \  /
-                                      \/
-                                       |N
-                                       |       Port
-                                       +------>Restricted
+           |         \Same/      |   I    |     \ ?  /               Internet
+           |          \? /       +--------+      \  /
+           V           \/                         \/
+        +--------+     |                           |Y
+        | TestIV |     |                           |
+        +--------+     |                           V
+           |           |                           Full
+           |           |                           Cone
+           V           V              /\
+           /\      +--------+        /  \ Y
+          /  \     |  Test  |------>/Resp\---->Restricted
+         /local--+ |   III  |       \ ?  /
+         \ ?  /  | +--------+        \  /
+          \  /   V                    \/
+           \/ Local Sym NAT            |N
+           |                           |       Port
+           +--->Symmetric NAT          +------>Restricted
         '''
         ret = self.testI1()
         if ret == self.RET_TEST_I1_UDP_BLOCKED:
@@ -201,6 +204,9 @@ class STUNClient:
                 return self.NET_TYPE_FULLCONE_NAT
             ret = self.testI2()
             if ret == self.RET_TEST_I2_IP_DIFF:
+                ret = self.testIV()
+                if ret == self.RET_TEST_IV_LOCAL:
+                    return self.NET_TYPE_SYM_NAT_LOCAL
                 return self.NET_TYPE_SYM_NAT
             ret = self.testIII()
             if ret == self.RET_TEST_III_GOT_RESP:
@@ -479,6 +485,110 @@ class STUNClient:
         self.tid3 += 1
         return self.RET_TEST_III_GOT_RESP
 
+    def testIV(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(self.timeout)
+
+        # make request packet
+        req = struct.pack('!HHIIII', self.BindingRequest, 0, 
+                          self.tid0, self.tid1, self.tid2, self.tid3)
+        # send/recv
+        resp1 = ''
+        resp2 = ''
+        self.sock.sendto(req, (self.serverIP, self.serverPort))
+        self.sock.sendto(req, (self.changedIP, self.changedPort))
+        st = time.time()
+        while time.time() - st < self.timeout:
+            try:
+                resp, fro = self.sock.recvfrom(4096)
+                # check resp
+                if len(resp) < 20:
+                    continue
+                mh = resp[0: 20]
+                t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
+                if t != self.BindingResponse:
+                    continue
+                if l != len(resp) - 20:
+                    continue
+                if tid0 != self.tid0 or tid1 != self.tid1 \
+                   or tid2 != self.tid2 or tid3 != self.tid3:
+                    continue
+                # check fro
+                if fro == (self.serverIP, self.serverPort):
+                    resp1 = resp
+                elif fro == (self.changedIP, self.changedPort):
+                    resp2 = resp
+                if resp1 != '' and resp2 != '':
+                    break
+            except socket.timeout:
+                continue
+        else:
+            raise ServerError, 'Couldn\'t get server\'s response.'
+        self.tid3 += 1
+        sock.close()
+
+        mappedIP1 = ''
+        mappedIP2 = ''
+
+        # for response from serverIP
+        restLen = len(resp1) - 20
+        respIdx = 20
+        # for Message Attributes
+        while True:
+            if restLen < 4:
+                break
+            mah = resp1[respIdx: respIdx + 4]
+            restLen -= 4
+            respIdx += 4
+            t, l = struct.unpack('!HH', mah)
+            if l > restLen:
+                raise ServerError, 'Invalid server\'s response.'
+            v = resp1[respIdx: respIdx + l]
+            restLen -= l
+            respIdx += l
+            if t == self.MAPPED_ADDRESS:
+                if l != 8:
+                    raise ServerError, 'Invalid server\'s response.'
+                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                if f != 1:
+                    raise ServerError, 'Invalid server\'s response.'
+                mappedIP1 = '%d.%d.%d.%d' % (s1, s2, s3, s4)
+                mappedPort1 = p
+        if mappedIP1 == '':
+            raise ServerError, 'Invalid server\'s response.'
+
+        # for response from serverIP
+        restLen = len(resp2) - 20
+        respIdx = 20
+        # for Message Attributes
+        while True:
+            if restLen < 4:
+                break
+            mah = resp2[respIdx: respIdx + 4]
+            restLen -= 4
+            respIdx += 4
+            t, l = struct.unpack('!HH', mah)
+            if l > restLen:
+                raise ServerError, 'Invalid server\'s response.'
+            v = resp2[respIdx: respIdx + l]
+            restLen -= l
+            respIdx += l
+            if t == self.MAPPED_ADDRESS:
+                if l != 8:
+                    raise ServerError, 'Invalid server\'s response.'
+                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                if f != 1:
+                    raise ServerError, 'Invalid server\'s response.'
+                mappedIP2 = '%d.%d.%d.%d' % (s1, s2, s3, s4)
+                mappedPort2 = p
+        if mappedIP2 == '':
+            raise ServerError, 'Invalid server\'s response.'
+
+        if mappedIP1 == mappedIP2 \
+           and mappedPort1 in range(mappedPort2 - 10, mappedPort2 + 10):
+            return self.RET_TEST_IV_LOCAL
+        return self.RET_TEST_IV_DIFF
+
     def createSocket(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(self.timeout)
@@ -486,7 +596,8 @@ class STUNClient:
 
 if __name__ == '__main__':
     sc = STUNClient()
+    #sc.setServerAddr('69.0.208.27')
+    sc.setServerAddr('72.14.235.125', 19302)
     sc.createSocket()
-    sc.setServerAddr('69.0.208.27')
     print sc.getNatType()
     print sc.getMappedAddr()
