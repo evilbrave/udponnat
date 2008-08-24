@@ -61,13 +61,13 @@ class STUNClient:
     RET_TEST_IV_DIFF = 10
     # network types
     NET_TYPE_OPENED = 0
-    NET_TYPE_UDP_BLOCKED = 1
-    NET_TYPE_SYM_UDP_FIREWALL = 2
-    NET_TYPE_FULLCONE_NAT = 3
-    NET_TYPE_SYM_NAT = 4
-    NET_TYPE_REST_NAT = 5
-    NET_TYPE_PORTREST_NAT = 6
-    NET_TYPE_SYM_NAT_LOCAL = 7
+    NET_TYPE_FULLCONE_NAT = 1
+    NET_TYPE_REST_NAT = 2
+    NET_TYPE_PORTREST_NAT = 3
+    NET_TYPE_SYM_UDP_FIREWALL = 4
+    NET_TYPE_SYM_NAT_LOCAL = 5
+    NET_TYPE_SYM_NAT = 6
+    NET_TYPE_UDP_BLOCKED = 7
 
     def __init__(self):
         self.sock = None
@@ -593,11 +593,33 @@ class STUNClient:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(self.timeout)
 
+    def close(self):
+        self.sock.close()
+
+    def natType2String(self, t):
+        if t == self.NET_TYPE_OPENED:
+            return 'Opened(%d)' % self.NET_TYPE_OPENED
+        elif t == self.NET_TYPE_FULLCONE_NAT:
+            return 'Full Cone NAT(%d)' % self.NET_TYPE_FULLCONE_NAT
+        elif t == self.NET_TYPE_REST_NAT:
+            return 'Restricted NAT(%d)' % self.NET_TYPE_REST_NAT
+        elif t == self.NET_TYPE_PORTREST_NAT:
+            return 'Port Restricted NAT(%d)' % self.NET_TYPE_PORTREST_NAT
+        elif t == self.NET_TYPE_SYM_UDP_FIREWALL:
+            return 'Symmetric UDP Firewall(%d)' % self.NET_TYPE_SYM_UDP_FIREWALL
+        elif t == self.NET_TYPE_SYM_NAT_LOCAL:
+            return 'Symmetric NAT with localization(%d)' % self.NET_TYPE_SYM_NAT_LOCAL
+        elif t == self.NET_TYPE_SYM_NAT:
+            return 'Symmetric NAT(%d)' % self.NET_TYPE_SYM_NAT
+        elif t == self.NET_TYPE_UDP_BLOCKED:
+            return 'Blocked(%d)' % self.NET_TYPE_UDP_BLOCKED
+
 
 if __name__ == '__main__':
     sc = STUNClient()
-    #sc.setServerAddr('69.0.208.27')
-    sc.setServerAddr('72.14.235.125', 19302)
+    sc.setServerAddr('69.0.208.27')
+    #sc.setServerAddr('72.14.235.125', 19302)
     sc.createSocket()
-    print sc.getNatType()
-    print sc.getMappedAddr()
+    print 'NAT TYPE:', sc.natType2String(sc.getNatType())
+    print 'MAPPED ADDRESS:', sc.getMappedAddr()
+    sc.close()
