@@ -62,12 +62,13 @@ class STUNClient:
     # network types
     NET_TYPE_OPENED = 0
     NET_TYPE_FULLCONE_NAT = 1
-    NET_TYPE_REST_NAT = 2
-    NET_TYPE_PORTREST_NAT = 3
-    NET_TYPE_SYM_UDP_FIREWALL = 4
-    NET_TYPE_SYM_NAT_LOCAL = 5
-    NET_TYPE_SYM_NAT = 6
-    NET_TYPE_UDP_BLOCKED = 7
+    NET_TYPE_REST_FIREWALL = 2
+    NET_TYPE_REST_NAT = 3
+    NET_TYPE_PORTREST_FIREWALL = 4
+    NET_TYPE_PORTREST_NAT = 5
+    NET_TYPE_SYM_NAT_LOCAL = 6
+    NET_TYPE_SYM_NAT = 7
+    NET_TYPE_UDP_BLOCKED = 8
 
     def __init__(self):
         self.sock = None
@@ -172,28 +173,28 @@ class STUNClient:
                                               +--------+  Sym.      N /  \
                                               |  Test  |  UDP    <---/Resp\
                                               |   II   |  Firewall   \ ?  /
-                                              +--------+              \  /
-                                                  |                    \/
-                                                  V                     |Y
-                       /\                         /\                    |
-        Symmetric  N  /  \       +--------+   N  /  \                   V
-           NAT  <--- / IP \<-----|  Test  |<--- /Resp\               Open
-           |         \Same/      |   I    |     \ ?  /               Internet
-           |          \? /       +--------+      \  /
-           V           \/                         \/
-        +--------+     |                           |Y
-        | TestIV |     |                           |
-        +--------+     |                           V
-           |           |                           Full
-           |           |                           Cone
-           V           V              /\
-           /\      +--------+        /  \ Y
-          /  \     |  Test  |------>/Resp\---->Restricted
-         /local--+ |   III  |       \ ?  /
-         \ ?  /  | +--------+        \  /
-          \  /   V                    \/
-           \/ Local Sym NAT            |N
-           |                           |       Port
+                                              +--------+   |          \  /
+                                                  |        |           \/
+                                                  V        V            |Y
+                       /\                         /\    +------+        |
+        Symmetric  N  /  \       +--------+   N  /  \   | Test |        V
+           NAT  <--- / IP \<-----|  Test  |<--- /Resp\  | III  |     Open
+           |         \Same/      |   I    |     \ ?  /  +------+     Internet
+           |          \? /       +--------+      \  /      |
+           V           \/                         \/       |
+        +--------+     |                           |Y      V
+        | TestIV |     |                           |       /\
+        +--------+     |                           V      /  \ Y
+           |           |                           Full  /Resp\---->Restricted
+           |           |                           Cone  \ ?  /     Firewall
+           V           V              /\                  \  /
+           /\      +--------+        /  \ Y                \/
+          /  \  Y  |  Test  |------>/Resp\---->Restricted  |N
+         /local--+ |   III  |       \ ?  /                 |
+         \ ?  /  | +--------+        \  /                  V
+          \  /   V                    \/                   Port
+           \/ Local Sym NAT            |N                  Restricted
+           |N                          |       Port        Firewall
            +--->Symmetric NAT          +------>Restricted
         '''
         ret = self.testI1()
@@ -203,7 +204,10 @@ class STUNClient:
             ret = self.testII()
             if ret == self.RET_TEST_II_GOT_RESP:
                 return self.NET_TYPE_OPENED
-            return self.NET_TYPE_SYM_UDP_FIREWALL
+            ret = self.testIII()
+            if ret == self.RET_TEST_III_GOT_RESP:
+                return self.NET_TYPE_REST_FIREWALL
+            return self.NET_TYPE_PORTREST_FIREWALL
         else:
             ret = self.testII()
             if ret == self.RET_TEST_II_GOT_RESP:
@@ -607,12 +611,14 @@ class STUNClient:
             return 'Opened(%d)' % self.NET_TYPE_OPENED
         elif t == self.NET_TYPE_FULLCONE_NAT:
             return 'Full Cone NAT(%d)' % self.NET_TYPE_FULLCONE_NAT
+        elif t == self.NET_TYPE_REST_FIREWALL:
+            return 'Restricted Firewall(%d)' % self.NET_TYPE_REST_FIREWALL
         elif t == self.NET_TYPE_REST_NAT:
             return 'Restricted NAT(%d)' % self.NET_TYPE_REST_NAT
+        elif t == self.NET_TYPE_PORTREST_FIREWALL:
+            return 'Port Restricted Firewall(%d)' % self.NET_TYPE_PORTREST_FIREWALL
         elif t == self.NET_TYPE_PORTREST_NAT:
             return 'Port Restricted NAT(%d)' % self.NET_TYPE_PORTREST_NAT
-        elif t == self.NET_TYPE_SYM_UDP_FIREWALL:
-            return 'Symmetric UDP Firewall(%d)' % self.NET_TYPE_SYM_UDP_FIREWALL
         elif t == self.NET_TYPE_SYM_NAT_LOCAL:
             return 'Symmetric NAT with localization(%d)' % self.NET_TYPE_SYM_NAT_LOCAL
         elif t == self.NET_TYPE_SYM_NAT:

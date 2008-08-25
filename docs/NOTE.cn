@@ -1,0 +1,9 @@
+判定两端可否通信的规则,越靠前优先级越高:
+    0, 两端真实IP相同,提示在同一局域网内,停止处理.
+    1, 一端网络类型为Blocked,则判定不可通信.
+    2, 一端网络类型为Opened/Full cone NAT,则判定可通信,无须再判断另一端网络类型,类型I.
+    3, 一端网络类型为Restricted Firewall/Restricted NAT,则判定可通信,无须再判断另一端网络类型,类型II.
+    4, 一端网络类型为Symmetric NAT,则判定不可通信.
+    5, 两端网络类型均属于(Port Restricted Firewall|Port Restricted NAT),则判定可通信,类型III.
+    6, 只有一端网络类型为Symmetric NAT with localization,可尝试通信,类型IV.
+    7, 两端网络类型均为Symmetric NAT with localization,判定不可通信.
