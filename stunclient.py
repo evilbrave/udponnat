@@ -64,11 +64,12 @@ class STUNClient:
     NET_TYPE_FULLCONE_NAT = 1
     NET_TYPE_REST_FIREWALL = 2
     NET_TYPE_REST_NAT = 3
-    NET_TYPE_PORTREST_FIREWALL = 4
-    NET_TYPE_PORTREST_NAT = 5
-    NET_TYPE_SYM_NAT_LOCAL = 6
-    NET_TYPE_SYM_NAT = 7
-    NET_TYPE_UDP_BLOCKED = 8
+    NET_TYPE_REST_SYM_NAT_LOCAL = 4
+    NET_TYPE_PORTREST_FIREWALL = 5
+    NET_TYPE_PORTREST_NAT = 6
+    NET_TYPE_PORTREST_SYM_NAT_LOCAL = 7
+    NET_TYPE_SYM_NAT = 8
+    NET_TYPE_UDP_BLOCKED = 9
 
     def __init__(self):
         self.sock = None
@@ -216,7 +217,10 @@ class STUNClient:
             if ret == self.RET_TEST_I2_IP_DIFF:
                 ret = self.testIV()
                 if ret == self.RET_TEST_IV_LOCAL:
-                    return self.NET_TYPE_SYM_NAT_LOCAL
+                    ret = self.testIII()
+                    if ret == self.RET_TEST_III_GOT_RESP:
+                        return self.NET_TYPE_REST_SYM_NAT_LOCAL
+                    return self.NET_TYPE_PORTREST_SYM_NAT_LOCAL
                 return self.NET_TYPE_SYM_NAT
             ret = self.testIII()
             if ret == self.RET_TEST_III_GOT_RESP:
@@ -594,8 +598,9 @@ class STUNClient:
         if mappedIP2 == '':
             raise ServerError, 'Invalid server\'s response.'
 
+        print 'mappedPort1 = %d, mappedPort2 = %d' % (mappedPort1, mappedPort2)
         if mappedIP1 == mappedIP2 \
-           and mappedPort1 in range(mappedPort2 - 10, mappedPort2 + 10):
+           and mappedPort1 in range(mappedPort2 - 100, mappedPort2 + 100):
             return self.RET_TEST_IV_LOCAL
         return self.RET_TEST_IV_DIFF
 
@@ -615,12 +620,14 @@ class STUNClient:
             return 'Restricted Firewall(%d)' % self.NET_TYPE_REST_FIREWALL
         elif t == self.NET_TYPE_REST_NAT:
             return 'Restricted NAT(%d)' % self.NET_TYPE_REST_NAT
+        elif t == self.NET_TYPE_REST_SYM_NAT_LOCAL:
+            return 'Restricted Symmetric NAT with Localization(%d)' % self.NET_TYPE_REST_SYM_NAT_LOCAL
         elif t == self.NET_TYPE_PORTREST_FIREWALL:
             return 'Port Restricted Firewall(%d)' % self.NET_TYPE_PORTREST_FIREWALL
         elif t == self.NET_TYPE_PORTREST_NAT:
             return 'Port Restricted NAT(%d)' % self.NET_TYPE_PORTREST_NAT
-        elif t == self.NET_TYPE_SYM_NAT_LOCAL:
-            return 'Symmetric NAT with localization(%d)' % self.NET_TYPE_SYM_NAT_LOCAL
+        elif t == self.NET_TYPE_PORTREST_SYM_NAT_LOCAL:
+            return 'Port Restricted Symmetric NAT with Localization(%d)' % self.NET_TYPE_PORTREST_SYM_NAT_LOCAL
         elif t == self.NET_TYPE_SYM_NAT:
             return 'Symmetric NAT(%d)' % self.NET_TYPE_SYM_NAT
         elif t == self.NET_TYPE_UDP_BLOCKED:
@@ -629,9 +636,7 @@ class STUNClient:
 
 if __name__ == '__main__':
     sc = STUNClient()
-    sc.setServerAddr('stun.ekiga.net')
-    #sc.setServerAddr('stun.l.google.com', 19302)
+    sc.setServerAddr('stunserver.org')
     sc.createSocket()
     print 'NAT TYPE:', sc.natType2String(sc.getNatType())
-    print 'MAPPED ADDRESS:', sc.getMappedAddr()
     sc.close()

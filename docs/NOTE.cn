@@ -5,5 +5,57 @@
     3, 一端网络类型为Restricted Firewall/Restricted NAT,则判定可通信,无须再判断另一端网络类型,类型II.
     4, 一端网络类型为Symmetric NAT,则判定不可通信.
     5, 两端网络类型均属于(Port Restricted Firewall|Port Restricted NAT),则判定可通信,类型III.
-    6, 只有一端网络类型为Symmetric NAT with localization,可尝试通信,类型IV.
-    7, 两端网络类型均为Symmetric NAT with localization,判定不可通信.
+    6, 只有一端网络类型为Port Restricted Symmetric NAT with Localization,可尝试通信,类型IV.
+    7, 两端网络类型均为Port Restricted Symmetric NAT with Localization,判定不可通信.
+    *, 事实上,Restricted Symmetric NAT with Localization也有很强的通信能力,几乎等同于Restricted NAT,但这种网络比较少,暂不单独考虑,与Port Restricted Symmetric NAT with Localization做相同处理.
+
+连接包含的相关数据:
+    server: from(user,IP:PORT,ffd),tfd
+    client: fd
+
+链路建立步骤:
+    1, server获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,如果是cone类型需维持地址映射,并且做xmpp listen.
+    2, client获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,如果是cone类型需维持地址映射,然后以xmpp方式发送给server.
+    3, server判断两端网络类型及映射IP:PORT,分类处理.
+        I,如果server为Opened/Full cone NAT,xmpp通知client连接IP:PORT.
+          如果client为Opened/Full cone NAT,xmpp通知client准备接受连接.
+          注:通知包含一个session key,下同.
+        II,如果server为Restricted,向client发送一个包打洞,然后通知client连接IP:PORT.
+           如果client为Restricted,xmpp通知client向server打洞并接受从IP出发的连接.
+        III,向client发送一个包打洞,然后通知client连接IP:PORT.
+        IV,如果server为Port Restricted,xmpp通知client创建新socket,绑定新端口,listen,向server持续打洞同时获取新映射地址,最后将新的映射地址xmpp发送到server,server试图连接client的一个port段.
+           如果client为Port Restricted,server创建新socket,绑定新端口,listen,向client持续打洞同时获取新映射地址,最后将新的映射地址xmpp通知client,client试图连接server的一个port段.
+
+通信包格式:
+    xmpp packet: plain-text
+        client hello:
+            Hello;NetType;IP:PORT
+        server cmd:
+            * Impossible to connect.
+            Dont
+            * I
+            Do;IA;IP:PORT;SESSID
+            Do;IB;SESSID
+            * II
+            Do;IIA;IP:PORT;SESSID
+            Do;IIB;IP;SESSID
+            * III
+            Do;III;IP:PORT;SESSID
+            * IV
+            Do;IVA;IP:PORT;SESSID
+            Do;IVB;IP:PORT;SESSID
+        client cmd:
+            * IV
+            Do;IVA;IP:PORT;SESSID
+
+    udp packet: plain-text
+        * Request
+            Hi;SESSID
+        * Reply
+            Welcome;SESSID
+
+client在链路建立后可停止地址映射维持工作.
+
+另外还需要0长度或者包含特定内容的udp包维持链路.
+
+服务器所有工作都有一个超时,过期复位.
