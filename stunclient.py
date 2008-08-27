@@ -41,12 +41,10 @@ class STUNClient:
     # Message Types
     BindingRequest = 0x0001
     BindingResponse = 0x0101
-    BindingErrorResponse = 0x0111
     # Message Attribute Types
     MAPPED_ADDRESS = 0x0001
     CHANGE_REQUEST = 0x0003
     CHANGED_ADDRESS = 0x0005
-    ERROR_CODE = 0x0009
     # return values of test**
     RET_TEST_I1_UDP_BLOCKED = 0
     RET_TEST_I1_IP_SAME = 1
@@ -88,8 +86,9 @@ class STUNClient:
         self.changedIP = ''
         self.changedPort = -1
 
-    def setServerAddr(self, host, port=3478):
+    def setServerAddr(self, stunServer=('stunserver.org', 3478)):
         # is host in ***.***.***.***?
+        host, port = stunServer
         if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', host) == None:
             # hostname
             self.serverIP = socket.gethostbyname(host)
@@ -107,7 +106,7 @@ class STUNClient:
     def getTimeout(self):
         return self.timeout
 
-    def getNatType(self):
+    def getNetType(self):
         '''
         o  On the open Internet
         o  Firewall that blocks UDP
@@ -198,49 +197,61 @@ class STUNClient:
            |N                          |       Port        Firewall
            +--->Symmetric NAT          +------>Restricted
         '''
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.settimeout(self.timeout)
+
         ret = self.testI1()
         if ret == self.RET_TEST_I1_UDP_BLOCKED:
-            return self.NET_TYPE_UDP_BLOCKED
+            netType = self.NET_TYPE_UDP_BLOCKED
         elif ret == self.RET_TEST_I1_IP_SAME:
             ret = self.testII()
             if ret == self.RET_TEST_II_GOT_RESP:
-                return self.NET_TYPE_OPENED
-            ret = self.testIII()
-            if ret == self.RET_TEST_III_GOT_RESP:
-                return self.NET_TYPE_REST_FIREWALL
-            return self.NET_TYPE_PORTREST_FIREWALL
+                netType = self.NET_TYPE_OPENED
+            else:
+                ret = self.testIII()
+                if ret == self.RET_TEST_III_GOT_RESP:
+                    netType = self.NET_TYPE_REST_FIREWALL
+                else:
+                    netType = self.NET_TYPE_PORTREST_FIREWALL
         else:
             ret = self.testII()
             if ret == self.RET_TEST_II_GOT_RESP:
-                return self.NET_TYPE_FULLCONE_NAT
-            ret = self.testI2()
-            if ret == self.RET_TEST_I2_IP_DIFF:
-                ret = self.testIV()
-                if ret == self.RET_TEST_IV_LOCAL:
+                netType = self.NET_TYPE_FULLCONE_NAT
+            else:
+                ret = self.testI2()
+                if ret == self.RET_TEST_I2_IP_DIFF:
+                    ret = self.testIV()
+                    if ret == self.RET_TEST_IV_LOCAL:
+                        ret = self.testIII()
+                        if ret == self.RET_TEST_III_GOT_RESP:
+                            netType = self.NET_TYPE_REST_SYM_NAT_LOCAL
+                        else:
+                            netType = self.NET_TYPE_PORTREST_SYM_NAT_LOCAL
+                    else:
+                        netType = self.NET_TYPE_SYM_NAT
+                else:
                     ret = self.testIII()
                     if ret == self.RET_TEST_III_GOT_RESP:
-                        return self.NET_TYPE_REST_SYM_NAT_LOCAL
-                    return self.NET_TYPE_PORTREST_SYM_NAT_LOCAL
-                return self.NET_TYPE_SYM_NAT
-            ret = self.testIII()
-            if ret == self.RET_TEST_III_GOT_RESP:
-                return self.NET_TYPE_REST_NAT
-            return self.NET_TYPE_PORTREST_NAT
+                        netType = self.NET_TYPE_REST_NAT
+                    else:
+                        netType = self.NET_TYPE_PORTREST_NAT
 
-    def getMappedAddr(self):
+        self.sock.close()
+        self.sock = None
+        return netType
+
+    def getMappedAddr(self, sock, stunServer=('stun.l.google.com', 19302)):
         mappedIP = ''
 
         # make request packet
-        req = struct.pack('!HHIIII', self.BindingRequest, 0, 
-                          self.tid0, self.tid1, self.tid2, self.tid3)
+        req = struct.pack('!HHIIII', self.BindingRequest, 0, 1, 2, 3, 4)
         # send/recv
-        self.sock.sendto(req, (self.serverIP, self.serverPort))
+        sock.sendto(req, stunServer)
         st = time.time()
-        while time.time() - st < self.timeout:
+        while time.time() - st < 3:
             try:
-                resp, fro = self.sock.recvfrom(4096)
-                if fro != (self.serverIP, self.serverPort):
-                    continue
+                resp, fro = sock.recvfrom(4096)
                 # check resp
                 if len(resp) < 20:
                     continue
@@ -250,15 +261,13 @@ class STUNClient:
                     continue
                 if l != len(resp) - 20:
                     continue
-                if tid0 != self.tid0 or tid1 != self.tid1 \
-                   or tid2 != self.tid2 or tid3 != self.tid3:
+                if tid0 != 1 or tid1 != 2 or tid2 != 3 or tid3 != 4:
                     continue
                 break
             except socket.timeout:
                 continue
         else:
             raise ServerError, 'Couldn\'t get server\'s response.'
-        self.tid3 += 1
 
         # got response
         restLen = len(resp) - 20
@@ -598,20 +607,13 @@ class STUNClient:
         if mappedIP2 == '':
             raise ServerError, 'Invalid server\'s response.'
 
-        print 'mappedPort1 = %d, mappedPort2 = %d' % (mappedPort1, mappedPort2)
+        #print 'mappedPort1 = %d, mappedPort2 = %d' % (mappedPort1, mappedPort2)
         if mappedIP1 == mappedIP2 \
            and mappedPort1 in range(mappedPort2 - 100, mappedPort2 + 100):
             return self.RET_TEST_IV_LOCAL
         return self.RET_TEST_IV_DIFF
 
-    def createSocket(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(self.timeout)
-
-    def close(self):
-        self.sock.close()
-
-    def natType2String(self, t):
+    def netType2String(self, t):
         if t == self.NET_TYPE_OPENED:
             return 'Opened(%d)' % self.NET_TYPE_OPENED
         elif t == self.NET_TYPE_FULLCONE_NAT:
@@ -619,13 +621,13 @@ class STUNClient:
         elif t == self.NET_TYPE_REST_FIREWALL:
             return 'Restricted Firewall(%d)' % self.NET_TYPE_REST_FIREWALL
         elif t == self.NET_TYPE_REST_NAT:
-            return 'Restricted NAT(%d)' % self.NET_TYPE_REST_NAT
+            return 'Restricted Cone NAT(%d)' % self.NET_TYPE_REST_NAT
         elif t == self.NET_TYPE_REST_SYM_NAT_LOCAL:
             return 'Restricted Symmetric NAT with Localization(%d)' % self.NET_TYPE_REST_SYM_NAT_LOCAL
         elif t == self.NET_TYPE_PORTREST_FIREWALL:
             return 'Port Restricted Firewall(%d)' % self.NET_TYPE_PORTREST_FIREWALL
         elif t == self.NET_TYPE_PORTREST_NAT:
-            return 'Port Restricted NAT(%d)' % self.NET_TYPE_PORTREST_NAT
+            return 'Port Restricted Cone NAT(%d)' % self.NET_TYPE_PORTREST_NAT
         elif t == self.NET_TYPE_PORTREST_SYM_NAT_LOCAL:
             return 'Port Restricted Symmetric NAT with Localization(%d)' % self.NET_TYPE_PORTREST_SYM_NAT_LOCAL
         elif t == self.NET_TYPE_SYM_NAT:
@@ -636,7 +638,5 @@ class STUNClient:
 
 if __name__ == '__main__':
     sc = STUNClient()
-    sc.setServerAddr('stunserver.org')
-    sc.createSocket()
-    print 'NAT TYPE:', sc.natType2String(sc.getNatType())
-    sc.close()
+    sc.setServerAddr(('stunserver.org', 3478))
+    print 'NET TYPE:', sc.netType2String(sc.getNetType())
