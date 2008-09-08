@@ -25,6 +25,18 @@
 
 import socket, struct, time, re
 
+# network types
+NET_TYPE_OPENED = 0
+NET_TYPE_FULLCONE_NAT = 1
+NET_TYPE_REST_FIREWALL = 2
+NET_TYPE_REST_NAT = 3
+NET_TYPE_REST_SYM_NAT_LOCAL = 4
+NET_TYPE_PORTREST_FIREWALL = 5
+NET_TYPE_PORTREST_NAT = 6
+NET_TYPE_PORTREST_SYM_NAT_LOCAL = 7
+NET_TYPE_SYM_NAT = 8
+NET_TYPE_UDP_BLOCKED = 9
+
 class STUNError(Exception):
     pass
 
@@ -35,7 +47,7 @@ class ServerError(STUNError):
     def __str__(self):
         return '<Server Error: %s>' % self.reason
 
-class STUNClient:
+class STUNClient(object):
     '''A STUN client implementated by Python.'''
     # constant
     # Message Types
@@ -57,17 +69,6 @@ class STUNClient:
     RET_TEST_III_GOT_RESP = 8
     RET_TEST_IV_LOCAL = 9
     RET_TEST_IV_DIFF = 10
-    # network types
-    NET_TYPE_OPENED = 0
-    NET_TYPE_FULLCONE_NAT = 1
-    NET_TYPE_REST_FIREWALL = 2
-    NET_TYPE_REST_NAT = 3
-    NET_TYPE_REST_SYM_NAT_LOCAL = 4
-    NET_TYPE_PORTREST_FIREWALL = 5
-    NET_TYPE_PORTREST_NAT = 6
-    NET_TYPE_PORTREST_SYM_NAT_LOCAL = 7
-    NET_TYPE_SYM_NAT = 8
-    NET_TYPE_UDP_BLOCKED = 9
 
     def __init__(self):
         self.sock = None
@@ -202,40 +203,40 @@ class STUNClient:
         self.sock.settimeout(self.timeout)
 
         ret = self.testI1()
-        if ret == self.RET_TEST_I1_UDP_BLOCKED:
-            netType = self.NET_TYPE_UDP_BLOCKED
-        elif ret == self.RET_TEST_I1_IP_SAME:
+        if ret == STUNClient.RET_TEST_I1_UDP_BLOCKED:
+            netType = NET_TYPE_UDP_BLOCKED
+        elif ret == STUNClient.RET_TEST_I1_IP_SAME:
             ret = self.testII()
-            if ret == self.RET_TEST_II_GOT_RESP:
-                netType = self.NET_TYPE_OPENED
+            if ret == STUNClient.RET_TEST_II_GOT_RESP:
+                netType = NET_TYPE_OPENED
             else:
                 ret = self.testIII()
-                if ret == self.RET_TEST_III_GOT_RESP:
-                    netType = self.NET_TYPE_REST_FIREWALL
+                if ret == STUNClient.RET_TEST_III_GOT_RESP:
+                    netType = NET_TYPE_REST_FIREWALL
                 else:
-                    netType = self.NET_TYPE_PORTREST_FIREWALL
+                    netType = NET_TYPE_PORTREST_FIREWALL
         else:
             ret = self.testII()
-            if ret == self.RET_TEST_II_GOT_RESP:
-                netType = self.NET_TYPE_FULLCONE_NAT
+            if ret == STUNClient.RET_TEST_II_GOT_RESP:
+                netType = NET_TYPE_FULLCONE_NAT
             else:
                 ret = self.testI2()
-                if ret == self.RET_TEST_I2_IP_DIFF:
+                if ret == STUNClient.RET_TEST_I2_IP_DIFF:
                     ret = self.testIV()
-                    if ret == self.RET_TEST_IV_LOCAL:
+                    if ret == STUNClient.RET_TEST_IV_LOCAL:
                         ret = self.testIII()
-                        if ret == self.RET_TEST_III_GOT_RESP:
-                            netType = self.NET_TYPE_REST_SYM_NAT_LOCAL
+                        if ret == STUNClient.RET_TEST_III_GOT_RESP:
+                            netType = NET_TYPE_REST_SYM_NAT_LOCAL
                         else:
-                            netType = self.NET_TYPE_PORTREST_SYM_NAT_LOCAL
+                            netType = NET_TYPE_PORTREST_SYM_NAT_LOCAL
                     else:
-                        netType = self.NET_TYPE_SYM_NAT
+                        netType = NET_TYPE_SYM_NAT
                 else:
                     ret = self.testIII()
-                    if ret == self.RET_TEST_III_GOT_RESP:
-                        netType = self.NET_TYPE_REST_NAT
+                    if ret == STUNClient.RET_TEST_III_GOT_RESP:
+                        netType = NET_TYPE_REST_NAT
                     else:
-                        netType = self.NET_TYPE_PORTREST_NAT
+                        netType = NET_TYPE_PORTREST_NAT
 
         self.sock.close()
         self.sock = None
@@ -245,7 +246,7 @@ class STUNClient:
         mappedIP = ''
 
         # make request packet
-        req = struct.pack('!HHIIII', self.BindingRequest, 0, 1, 2, 3, 4)
+        req = struct.pack('!HHIIII', STUNClient.BindingRequest, 0, 1, 2, 3, 4)
         # send/recv
         sock.sendto(req, stunServer)
         st = time.time()
@@ -257,7 +258,7 @@ class STUNClient:
                     continue
                 mh = resp[0: 20]
                 t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
-                if t != self.BindingResponse:
+                if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
                     continue
@@ -285,7 +286,7 @@ class STUNClient:
             v = resp[respIdx: respIdx + l]
             restLen -= l
             respIdx += l
-            if t == self.MAPPED_ADDRESS:
+            if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
                 _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
@@ -299,7 +300,7 @@ class STUNClient:
 
     def testI1(self):
         # make request packet
-        req = struct.pack('!HHIIII', self.BindingRequest, 0, 
+        req = struct.pack('!HHIIII', STUNClient.BindingRequest, 0, 
                           self.tid0, self.tid1, self.tid2, self.tid3)
         # send/recv
         self.sock.sendto(req, (self.serverIP, self.serverPort))
@@ -314,7 +315,7 @@ class STUNClient:
                     continue
                 mh = resp[0: 20]
                 t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
-                if t != self.BindingResponse:
+                if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
                     continue
@@ -325,7 +326,7 @@ class STUNClient:
             except socket.timeout:
                 continue
         else:
-            return self.RET_TEST_I1_UDP_BLOCKED
+            return STUNClient.RET_TEST_I1_UDP_BLOCKED
         self.tid3 += 1
 
         # got response
@@ -344,7 +345,7 @@ class STUNClient:
             v = resp[respIdx: respIdx + l]
             restLen -= l
             respIdx += l
-            if t == self.MAPPED_ADDRESS:
+            if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
                 _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
@@ -352,7 +353,7 @@ class STUNClient:
                     raise ServerError, 'Invalid server\'s response.'
                 self.mappedIP = '%d.%d.%d.%d' % (s1, s2, s3, s4)
                 self.mappedPort = p
-            elif t == self.CHANGED_ADDRESS:
+            elif t == STUNClient.CHANGED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
                 _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
@@ -366,9 +367,9 @@ class STUNClient:
         # get local addr/port
         self.getLocalIPPort()
         if self.localIP == self.mappedIP and self.localPort == self.mappedPort:
-            return self.RET_TEST_I1_IP_SAME
+            return STUNClient.RET_TEST_I1_IP_SAME
         else:
-            return self.RET_TEST_I1_IP_DIFF
+            return STUNClient.RET_TEST_I1_IP_DIFF
 
     def getLocalIPPort(self):
         # there are some bugs, but i can't find better way.
@@ -380,9 +381,9 @@ class STUNClient:
 
     def testII(self):
         # make request packet
-        req = struct.pack('!HHIIIIHHBBBB', self.BindingRequest, 8, 
+        req = struct.pack('!HHIIIIHHBBBB', STUNClient.BindingRequest, 8, 
                           self.tid0, self.tid1, self.tid2, self.tid3, 
-                          self.CHANGE_REQUEST, 4, 0, 0, 0, 6)
+                          STUNClient.CHANGE_REQUEST, 4, 0, 0, 0, 6)
         # send/recv
         self.sock.sendto(req, (self.serverIP, self.serverPort))
         st = time.time()
@@ -396,7 +397,7 @@ class STUNClient:
                     continue
                 mh = resp[0: 20]
                 t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
-                if t != self.BindingResponse:
+                if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
                     continue
@@ -407,15 +408,15 @@ class STUNClient:
             except socket.timeout:
                 continue
         else:
-            return self.RET_TEST_II_NO_RESP
+            return STUNClient.RET_TEST_II_NO_RESP
         self.tid3 += 1
-        return self.RET_TEST_II_GOT_RESP
+        return STUNClient.RET_TEST_II_GOT_RESP
 
     def testI2(self):
         mappedIP = ''
 
         # make request packet
-        req = struct.pack('!HHIIII', self.BindingRequest, 0, 
+        req = struct.pack('!HHIIII', STUNClient.BindingRequest, 0, 
                           self.tid0, self.tid1, self.tid2, self.tid3)
         # send/recv
         self.sock.sendto(req, (self.changedIP, self.changedPort))
@@ -430,7 +431,7 @@ class STUNClient:
                     continue
                 mh = resp[0: 20]
                 t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
-                if t != self.BindingResponse:
+                if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
                     continue
@@ -460,7 +461,7 @@ class STUNClient:
             v = resp[respIdx: respIdx + l]
             restLen -= l
             respIdx += l
-            if t == self.MAPPED_ADDRESS:
+            if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
                 _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
@@ -471,15 +472,15 @@ class STUNClient:
         if mappedIP == '':
             raise ServerError, 'Invalid server\'s response.'
         if mappedIP == self.mappedIP and mappedPort == self.mappedPort:
-            return self.RET_TEST_I2_IP_SAME
+            return STUNClient.RET_TEST_I2_IP_SAME
         else:
-            return self.RET_TEST_I2_IP_DIFF
+            return STUNClient.RET_TEST_I2_IP_DIFF
 
     def testIII(self):
         # make request packet
-        req = struct.pack('!HHIIIIHHBBBB', self.BindingRequest, 8, 
+        req = struct.pack('!HHIIIIHHBBBB', STUNClient.BindingRequest, 8, 
                           self.tid0, self.tid1, self.tid2, self.tid3, 
-                          self.CHANGE_REQUEST, 4, 0, 0, 0, 2)
+                          STUNClient.CHANGE_REQUEST, 4, 0, 0, 0, 2)
         # send/recv
         self.sock.sendto(req, (self.serverIP, self.serverPort))
         st = time.time()
@@ -493,7 +494,7 @@ class STUNClient:
                     continue
                 mh = resp[0: 20]
                 t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
-                if t != self.BindingResponse:
+                if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
                     continue
@@ -504,16 +505,16 @@ class STUNClient:
             except socket.timeout:
                 continue
         else:
-            return self.RET_TEST_III_NO_RESP
+            return STUNClient.RET_TEST_III_NO_RESP
         self.tid3 += 1
-        return self.RET_TEST_III_GOT_RESP
+        return STUNClient.RET_TEST_III_GOT_RESP
 
     def testIV(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(self.timeout)
 
         # make request packet
-        req = struct.pack('!HHIIII', self.BindingRequest, 0, 
+        req = struct.pack('!HHIIII', STUNClient.BindingRequest, 0, 
                           self.tid0, self.tid1, self.tid2, self.tid3)
         # send/recv
         resp1 = ''
@@ -529,7 +530,7 @@ class STUNClient:
                     continue
                 mh = resp[0: 20]
                 t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
-                if t != self.BindingResponse:
+                if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
                     continue
@@ -569,7 +570,7 @@ class STUNClient:
             v = resp1[respIdx: respIdx + l]
             restLen -= l
             respIdx += l
-            if t == self.MAPPED_ADDRESS:
+            if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
                 _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
@@ -596,7 +597,7 @@ class STUNClient:
             v = resp2[respIdx: respIdx + l]
             restLen -= l
             respIdx += l
-            if t == self.MAPPED_ADDRESS:
+            if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
                 _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
@@ -610,30 +611,30 @@ class STUNClient:
         #print 'mappedPort1 = %d, mappedPort2 = %d' % (mappedPort1, mappedPort2)
         if mappedIP1 == mappedIP2 \
            and mappedPort1 in range(mappedPort2 - 100, mappedPort2 + 100):
-            return self.RET_TEST_IV_LOCAL
-        return self.RET_TEST_IV_DIFF
+            return STUNClient.RET_TEST_IV_LOCAL
+        return STUNClient.RET_TEST_IV_DIFF
 
     def netType2String(self, t):
-        if t == self.NET_TYPE_OPENED:
-            return 'Opened(%d)' % self.NET_TYPE_OPENED
-        elif t == self.NET_TYPE_FULLCONE_NAT:
-            return 'Full Cone NAT(%d)' % self.NET_TYPE_FULLCONE_NAT
-        elif t == self.NET_TYPE_REST_FIREWALL:
-            return 'Restricted Firewall(%d)' % self.NET_TYPE_REST_FIREWALL
-        elif t == self.NET_TYPE_REST_NAT:
-            return 'Restricted Cone NAT(%d)' % self.NET_TYPE_REST_NAT
-        elif t == self.NET_TYPE_REST_SYM_NAT_LOCAL:
-            return 'Restricted Symmetric NAT with Localization(%d)' % self.NET_TYPE_REST_SYM_NAT_LOCAL
-        elif t == self.NET_TYPE_PORTREST_FIREWALL:
-            return 'Port Restricted Firewall(%d)' % self.NET_TYPE_PORTREST_FIREWALL
-        elif t == self.NET_TYPE_PORTREST_NAT:
-            return 'Port Restricted Cone NAT(%d)' % self.NET_TYPE_PORTREST_NAT
-        elif t == self.NET_TYPE_PORTREST_SYM_NAT_LOCAL:
-            return 'Port Restricted Symmetric NAT with Localization(%d)' % self.NET_TYPE_PORTREST_SYM_NAT_LOCAL
-        elif t == self.NET_TYPE_SYM_NAT:
-            return 'Symmetric NAT(%d)' % self.NET_TYPE_SYM_NAT
-        elif t == self.NET_TYPE_UDP_BLOCKED:
-            return 'Blocked(%d)' % self.NET_TYPE_UDP_BLOCKED
+        if t == NET_TYPE_OPENED:
+            return 'Opened(%d)' % NET_TYPE_OPENED
+        elif t == NET_TYPE_FULLCONE_NAT:
+            return 'Full Cone NAT(%d)' % NET_TYPE_FULLCONE_NAT
+        elif t == NET_TYPE_REST_FIREWALL:
+            return 'Restricted Firewall(%d)' % NET_TYPE_REST_FIREWALL
+        elif t == NET_TYPE_REST_NAT:
+            return 'Restricted Cone NAT(%d)' % NET_TYPE_REST_NAT
+        elif t == NET_TYPE_REST_SYM_NAT_LOCAL:
+            return 'Restricted Symmetric NAT with Localization(%d)' % NET_TYPE_REST_SYM_NAT_LOCAL
+        elif t == NET_TYPE_PORTREST_FIREWALL:
+            return 'Port Restricted Firewall(%d)' % NET_TYPE_PORTREST_FIREWALL
+        elif t == NET_TYPE_PORTREST_NAT:
+            return 'Port Restricted Cone NAT(%d)' % NET_TYPE_PORTREST_NAT
+        elif t == NET_TYPE_PORTREST_SYM_NAT_LOCAL:
+            return 'Port Restricted Symmetric NAT with Localization(%d)' % NET_TYPE_PORTREST_SYM_NAT_LOCAL
+        elif t == NET_TYPE_SYM_NAT:
+            return 'Symmetric NAT(%d)' % NET_TYPE_SYM_NAT
+        elif t == NET_TYPE_UDP_BLOCKED:
+            return 'Blocked(%d)' % NET_TYPE_UDP_BLOCKED
 
 
 if __name__ == '__main__':
