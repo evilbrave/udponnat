@@ -14,14 +14,18 @@
     client: fd
 
 链路建立步骤:
-    1, server获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,如果是cone类型需维持地址映射,并且做xmpp listen.
-    2, client获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,如果是cone类型需维持地址映射,然后以xmpp方式发送给server.
-    3, server判断两端网络类型及映射IP:PORT,分类处理.
-        I,如果server为Opened/Full cone NAT,xmpp通知client连接IP:PORT.
+    #1, server获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,如果是cone类型需维持地址映射,并且做xmpp listen.
+    #2, client获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,如果是cone类型需维持地址映射,然后以xmpp方式发送给server.
+
+    1, server获取自身网络类型,如果是Blocked类型则放弃,否则做xmpp listen.
+    2, client获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,如果是cone类型需维持地址映射,然后以xmpp方式发送client hello给server.
+    3, server创建新工作线程.
+    4, server根据两端网络类型,分类处理.
+        I,如果server为Opened/Full cone NAT,创建udp socket,获取其映射地址IP:PORT并维持,xmpp通知(server cmd)client连接IP:PORT.
           如果client为Opened/Full cone NAT,xmpp通知client准备接受连接.
           注:通知包含一个session key,下同.
-        II,如果server为Restricted,向client发送一个包打洞,然后通知client连接IP:PORT.
-           如果client为Restricted,xmpp通知client向server打洞并接受从IP出发的连接.
+        II,如果server为Restricted,创建udp socket,获取其映射地址IP:PORT并维持,向client的IP:PORT发送一个包打洞,然后通知client连接IP:PORT.
+           如果client为Restricted,创建udp socket,获取其映射地址IP,xmpp通知client向server IP的任一端口打洞并接受从IP出发的连接.
         III,向client发送一个包打洞,然后通知client连接IP:PORT.
         IV,如果server为Port Restricted,xmpp通知client创建新socket,绑定新端口,listen,向server持续打洞同时获取新映射地址,最后将新的映射地址xmpp发送到server,server试图连接client的一个port段.
            如果client为Port Restricted,server创建新socket,绑定新端口,listen,向client持续打洞同时获取新映射地址,最后将新的映射地址xmpp通知client,client试图连接server的一个port段.
@@ -53,6 +57,16 @@
             Hi;SESSID
         * Reply
             Welcome;SESSID
+
+程序结构: 主线程 + 若干工作线程
+
+    主线程:
+        处理xmpp消息,创建工作线程,向其传递xmpp消息内容,并回送工作线程响应.
+
+    工作线程:
+        处理xmpp消息内容.
+        转发udp数据包.
+
 
 client在链路建立后可停止地址映射维持工作.
 
