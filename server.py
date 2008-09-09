@@ -39,7 +39,7 @@ class ServerConf(object):
         return NET_TYPE_PORTREST_SYM_NAT_LOCAL
     
     def getLoginInfo(self):
-        return ('openvpn.nat.server', 'Admin123')
+        return ('openvpn.nat.server', '')
 
     def getAllowedUser(self):
         return ('openvpn.nat.user@gmail.com')
@@ -118,11 +118,12 @@ class WorkerThread(Thread):
 
     def failedToEstablish(self, reason):
         print 'failedToEstablish(%d)' % reason
+        self.oQueue.put('Cannot;%d' % reason)
 
     def establishIA(self):
         print 'establishIA()'
 
-def processMessages(sc, ms, oUsers):
+def processMessages(sc, ms, ss):
     while True:
         try:
             # FIFO
@@ -140,7 +141,7 @@ def processMessages(sc, ms, oUsers):
             # get a new session key
             while True:
                 k = randStr(20)
-                if k not in oUsers:
+                if k not in ss:
                     break
             # parse client hello
             t = int(c.split(';')[1])
@@ -154,14 +155,24 @@ def processMessages(sc, ms, oUsers):
             iq = Queue.Queue()
             oq = Queue.Queue()
             wt = WorkerThread(sc.getNetType(), iq, oq, k, t, ip, p)
-            oUsers[k] = (u, iq, oq)
+            ss[k] = (u, iq, oq)
             wt.run()
 
-def processOutputMessageQueues(oUsers):
-    pass
+def processOutputMessage(cnx, ss):
+    # for each session
+    for k in ss.keys():
+        (u, _, oq) = ss[k]
+        # for each message
+        while True:
+            try:
+                m = oq.get_nowait()
+            except Queue.Empty:
+                break
+            # send
+            cnx.send(xmpp.Message(u, '%s;%s' % (m, k)))
 
 def main():
-    onlineUsers = {}
+    sessions = {}
 
     # open server configuration file
     serverConf = ServerConf('./server.conf')
@@ -187,8 +198,8 @@ def main():
                 print 'Lost connection.'
                 break
             # process messages
-            processMessages(serverConf, messages, onlineUsers)
-            processOutputMessageQueues(onlineUsers)
+            processMessages(serverConf, messages, sessions)
+            processOutputMessage(cnx, sessions)
 
 if __name__ == '__main__':
     main()
