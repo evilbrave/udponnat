@@ -25,13 +25,10 @@
 
 from stunclient import *
 from threading import Thread
-import xmpp, random, re, socket
+import xmpp, random, re, socket, Queue
 
 # global messages list
 messages = []
-inputMessageQueues = {}
-outputMessageQueues = {}
-users = {}
 
 class ServerConf(object):
     '''server configuration'''
@@ -41,8 +38,8 @@ class ServerConf(object):
     def getNetType(self):
         return NET_TYPE_PORTREST_SYM_NAT_LOCAL
     
-    def getUserInfo(self):
-        return ('openvpn.nat.server', '')
+    def getLoginInfo(self):
+        return ('openvpn.nat.server', 'Admin123')
 
     def getAllowedUser(self):
         return ('openvpn.nat.user@gmail.com')
@@ -52,6 +49,7 @@ def xmppMessageCB(cnx, msg):
     m = msg.getBody()
     if u and m:
         messages.append((str(u).strip(), str(m).strip()))
+        #messages.append((unicode(u), unicode(m)))
 
 def xmppListen(user, passwd):
     cnx = xmpp.Client('gmail.com', debug=[])
@@ -69,18 +67,62 @@ def randStr(len):
 
 class WorkerThread(Thread):
     '''worker thread'''
-    def __init__(self, iQueues, oQueues, key, netType, srcIP, srcPort):
-        self.iQueues = iQueues
-        self.oQueues = oQueues
-        self.key = key 
-        self.netType = netType
+    def __init__(self, myNetType, iQueue, oQueue, sessKey, srcNetType, srcIP, srcPort):
+        self.myNetType = myNetType 
+        self.iQueue = iQueue
+        self.oQueue = oQueue
+        self.sessKey = sessKey 
+        self.srcNetType = srcNetType 
         self.srcIP = srcIP
         self.srcPort = srcPort
 
     def run(self):
-        print 'run'
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+        sc = STUNClient()
+        (myIP, myPort) = sc.getMappedAddr(s)
+        #print 'myAddr(%s:%d)' % (myIP, myPort)
 
-def processMessages(sc, ms):
+        # have server and client got the same mapped ip?
+        if myIP == self.srcIP:
+            self.failedToEstablish(0)
+        # opened or fullcone nat?
+        elif self.myNetType == NET_TYPE_OPENED or self.myNetType == NET_TYPE_FULLCONE_NAT:
+            pass
+        elif self.srcNetType == NET_TYPE_OPENED or self.srcNetType == NET_TYPE_FULLCONE_NAT:
+            pass
+        # restrict?
+        elif self.myNetType == NET_TYPE_REST_FIREWALL or self.myNetType == NET_TYPE_REST_NAT:
+            pass
+        elif self.srcNetType == NET_TYPE_REST_FIREWALL or self.srcNetType == NET_TYPE_REST_NAT:
+            pass
+        # both port restrict?
+        elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL or self.myNetType == NET_TYPE_PORTREST_NAT) \
+             and (self.srcNetType == NET_TYPE_PORTREST_FIREWALL or self.srcNetType == NET_TYPE_PORTREST_NAT):
+            pass
+        # one port restrict and one symmetric with localization
+        elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL or self.myNetType == NET_TYPE_PORTREST_NAT) \
+             and self.srcNetType == NET_TYPE_PORTREST_SYM_NAT_LOCAL:
+            pass
+        elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL or self.srcNetType == NET_TYPE_PORTREST_NAT) \
+             and self.myNetType == NET_TYPE_PORTREST_SYM_NAT_LOCAL:
+            pass
+        # one port restrict and one symmetric
+        elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL or self.myNetType == NET_TYPE_PORTREST_NAT) \
+             and self.srcNetType == NET_TYPE_SYM_NAT:
+            pass
+        elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL or self.srcNetType == NET_TYPE_PORTREST_NAT) \
+             and self.myNetType == NET_TYPE_SYM_NAT:
+            pass
+        else:
+            self.failedToEstablish(1)
+
+    def failedToEstablish(self, reason):
+        print 'failedToEstablish(%d)' % reason
+
+    def establishIA(self):
+        print 'establishIA()'
+
+def processMessages(sc, ms, oUsers):
     while True:
         try:
             # FIFO
@@ -98,7 +140,7 @@ def processMessages(sc, ms):
             # get a new session key
             while True:
                 k = randStr(20)
-                if k not in users:
+                if k not in oUsers:
                     break
             # parse client hello
             t = int(c.split(';')[1])
@@ -109,14 +151,18 @@ def processMessages(sc, ms):
                 # invalid ip
                 continue
             p = int(c.split(';')[2].split(':')[1])
-            wt = WorkerThread(inputMessageQueues, outputMessageQueues, k, t, ip, p)
-            users[k] = (wt, u)
+            iq = Queue.Queue()
+            oq = Queue.Queue()
+            wt = WorkerThread(sc.getNetType(), iq, oq, k, t, ip, p)
+            oUsers[k] = (u, iq, oq)
             wt.run()
 
-def processOutputMessageQueues(oQueues, us):
+def processOutputMessageQueues(oUsers):
     pass
 
 def main():
+    onlineUsers = {}
+
     # open server configuration file
     serverConf = ServerConf('./server.conf')
 
@@ -130,7 +176,7 @@ def main():
         netType = NET_TYPE_PORTREST_SYM_NAT_LOCAL
     
     # get user info of xmpp(gtalk) 
-    (user, passwd) = serverConf.getUserInfo()
+    (user, passwd) = serverConf.getLoginInfo()
     # wait for messages from xmpp
     while True:
         # the outer 'while' is for connection lost.
@@ -141,8 +187,8 @@ def main():
                 print 'Lost connection.'
                 break
             # process messages
-            processMessages(serverConf, messages)
-            processOutputMessageQueues(outputMessageQueues, users)
+            processMessages(serverConf, messages, onlineUsers)
+            processOutputMessageQueues(onlineUsers)
 
 if __name__ == '__main__':
     main()
