@@ -34,7 +34,7 @@
             Hello;NetType;IP:PORT
         server cmd:
             * Impossible to connect.
-            Dont
+            Cannot;REASON;SESSID
             * I
             Do;IA;IP:PORT;SESSID
             Do;IB;SESSID
