@@ -25,8 +25,7 @@
 
 from stunclient import *
 from threading import Thread
-import xmpp, random, re, socket, Queue, time, select
-from common import *
+import xmpp, random, re, socket, Queue, time, select, common
 
 # global messages list
 messages = []
@@ -40,7 +39,8 @@ class ClientConf(object):
         return ('127.0.0.1', 1194)
 
     def getNetType(self):
-        return NET_TYPE_SYM_NAT
+        return NET_TYPE_OPENED
+        #return NET_TYPE_SYM_NAT
     
     def getStunServer(self):
         return ('stunserver.org', 3478)
@@ -80,7 +80,6 @@ def gotReply(ms, user):
     return None
 
 def main():
-    timeout = 30
     listenAddr = None
     serverAddr = None
     fromAddr = None
@@ -117,7 +116,7 @@ def main():
                                       % (netType, mappedIP, mappedPort)))
     # wait for reply
     ct = time.time()
-    while time.time() - ct < timeout:
+    while time.time() - ct < common.timeout:
         ret = cnx.Process(1)
         if not ret:
             print 'Lost connection.'
@@ -131,12 +130,12 @@ def main():
         return
 
     # process reply
-    if re.match(r'^Cannot;\d+;[a-z]{%d}$' % sessionIDLength, content):
+    if re.match(r'^Cannot;\d+;[a-z]{%d}$' % common.sessionIDLength, content):
         # Cannot
         print 'Failed to establish connection: NetType dismatched.'
         return
     elif re.match(r'^Do;IA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % sessionIDLength, content):
+                  % common.sessionIDLength, content):
         # IA, prepare to connect server
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -153,7 +152,7 @@ def main():
         # wait for server's 'Welcome' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < timeout:
+        while time.time() - ct < common.timeout:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -166,9 +165,28 @@ def main():
         else:
             print 'Failed to establish connection: Timout.'
             return
-    elif re.match(r'^Do;IB;[a-z]{%d}$' % sessionIDLength, content):
-        # IB
-        pass
+    elif re.match(r'^Do;IB;[a-z]{%d}$' % common.sessionIDLength, content):
+        # IB, wait for server's request
+        # parse server reply
+        s = content.split(';')[2]
+        # wait for server's 'Hi' (udp)
+        toSock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = toSock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if data == 'Hi;%s' % s:
+                # connection established
+                serverAddr = fro
+                break
+        else:
+            print 'Failed to establish connection: Timout.'
+            return
+        # send client hi (udp)
+        toSock.sendto('Welcome;%s' % s, serverAddr)
     else:
         # wrong reply
         print 'Failed to establish connection: Invalid Server Reply.'

@@ -47,8 +47,6 @@
             Do;IVA;IP:PORT;SESSID
             Do;IVB;IP:PORT;SESSID
         client cmd:
-            * I
-            Ack;IB;SESSID
             * IV
             Do;IVA;IP:PORT;SESSID
 

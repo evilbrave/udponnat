@@ -25,8 +25,7 @@
 
 from stunclient import *
 from threading import Thread
-import xmpp, random, re, socket, Queue, time, select
-from common import *
+import xmpp, random, re, socket, Queue, time, select, common
 
 # global messages list
 messages = []
@@ -36,11 +35,12 @@ class ServerConf(object):
     def __init__(self, confFile):
         self.confFile = confFile
 
-    def getTo(self):
+    def getToAddr(self):
         return ('127.0.0.1', 1194)
 
     def getNetType(self):
-        return NET_TYPE_OPENED
+        #return NET_TYPE_OPENED
+        return NET_TYPE_SYM_NAT
     
     def getStunServer(self):
         return ('stunserver.org', 3478)
@@ -72,24 +72,23 @@ def xmppListen(user, passwd):
 
 def randStr():
     s = ''
-    for i in range(sessionIDLength):
+    for i in range(common.sessionIDLength):
         s += random.choice('abcdefghijklmnopqrstuvwxyz')
     return s
 
 class WorkerThread(Thread):
     '''worker thread'''
-    def __init__(self, to, myNetType, iQueue, oQueue, sessKey, \
-                 srcNetType, src):
+    def __init__(self, toAddr, myNetType, iQueue, oQueue, sessKey, \
+                 srcNetType, srcAddr):
         Thread.__init__(self)
-        self.to = to
+        self.toAddr = toAddr
         self.myNetType = myNetType 
         self.iQueue = iQueue
         self.oQueue = oQueue
         self.sessKey = sessKey 
         self.srcNetType = srcNetType 
-        self.src = src
+        self.srcAddr = srcAddr
         # other
-        self.timeout = 30
         self.toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
 
     def run(self):
@@ -99,7 +98,7 @@ class WorkerThread(Thread):
         #print 'myAddr(%s:%d)' % (myIP, myPort)
 
         # have server and client got the same mapped ip?
-        if myIP == self.src[0]:
+        if myIP == self.srcAddr[0]:
             self.failedToEstablish(0)
             return
         # opened or fullcone nat?
@@ -110,7 +109,7 @@ class WorkerThread(Thread):
                 return
         elif self.srcNetType == NET_TYPE_OPENED \
              or self.srcNetType == NET_TYPE_FULLCONE_NAT:
-            if not self.establishIB((myIP, myPort), fromSock):
+            if not self.establishIB(fromSock):
                 return
         # restrict?
         elif self.myNetType == NET_TYPE_REST_FIREWALL \
@@ -170,7 +169,7 @@ class WorkerThread(Thread):
                     except socket.error:
                         # EAGAIN
                         break
-                    self.toSock.sendto(d, self.to)
+                    self.toSock.sendto(d, self.toAddr)
             if self.toSock in rs:
                 # toSock is ready for read
                 while True:
@@ -179,35 +178,35 @@ class WorkerThread(Thread):
                     except socket.error:
                         # EAGAIN
                         break
-                    fromSock.sendto(d, self.src)
+                    fromSock.sendto(d, self.srcAddr)
             # check iQueue
             t = time.time()
             if t - lastCheck >= 1:
                 lastCheck = t
                 # iQueue, mainly for management
                 # preserve connection
-                fromSock.sendto('', self.src)
+                fromSock.sendto('', self.srcAddr)
 
     def sendXmppMessage(self, m):
         self.oQueue.put(m)
 
     def waitXmppMessage(self):
         try:
-            return self.iQueue.get(timeout=self.timeout)
+            return self.iQueue.get(True, common.timeout)
         except Queue.Empty:
             return None
 
     def failedToEstablish(self, reason):
         print 'failedToEstablish(%d)' % reason
-        self.sendXmppMessage('Cannot;%d' % reason)
+        self.sendXmppMessage('Cannot;%d;%s' % (reason, self.sessKey))
 
     def establishIA(self, addr, sock):
         print 'establishIA()'
-        self.sendXmppMessage('Do;IA;%s:%d' % addr)
+        self.sendXmppMessage('Do;IA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
         # wait for udp packet
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < self.timeout:
+        while time.time() - ct < common.timeout:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
@@ -215,7 +214,7 @@ class WorkerThread(Thread):
             # got some data
             if data == 'Hi;%s' % self.sessKey:
                 sock.sendto('Welcome;%s' % self.sessKey, fro)
-                self.src = fro
+                self.srcAddr = fro
                 return True
         # timeout
         print 'Failed to establish connection: Timout.'
@@ -224,33 +223,21 @@ class WorkerThread(Thread):
     def establishIB(self, sock):
         print 'establishIB()'
         # tell client to wait for udp request
-        self.sendXmppMessage('Do;IB')
-        # wait for client's ack
-        ct = time.time()
-        while time.time() - ct < self.timeout:
-            m = self.waitXmppMessage()
-            if not m:
-                continue
-            # got message
-            if m == 'Ack;IB;%s' % self.sessKey:
-                break
-        else:
-            # timeout
-            return False
-
+        self.sendXmppMessage('Do;IB;%s' % self.sessKey)
         # try to send udp packet
-        sock.sendto('Hi;%s' % self.sessKey, self.src)
+        sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < self.timeout:
+        while time.time() - ct < common.timeout:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
                 continue
             # got some data
-            if fro == self.src and data == 'Welcome;%s' % self.sessKey:
+            if fro == self.srcAddr and data == 'Welcome;%s' % self.sessKey:
                 return True
         # timeout
+        print 'Failed to establish connection: Timout.'
         return False
 
 def processInputMessages(sc, ms, ss):
@@ -284,17 +271,10 @@ def processInputMessages(sc, ms, ss):
                 # invalid ip
                 continue
             p = int(c.split(';')[2].split(':')[1])
-            wt = WorkerThread(sc.getTo(), sc.getNetType(), iq, oq, k, t, \
+            wt = WorkerThread(sc.getToAddr(), sc.getNetType(), iq, oq, k, t, \
                               (ip, p))
             ss[k] = (u, iq, oq)
             wt.start()
-        elif re.match(r'^Ack;[A-Z]{2,3};[a-z]{%d}$' % sessionIDLength, c):
-            # Ack
-            k = c.split(';')[2]
-            if k in ss.keys():
-                (mu, iq, oq) = ss[k]
-                if mu == u:
-                    iq.put(c)
 
 def processOutputMessage(cnx, ss):
     # for each session
@@ -307,7 +287,7 @@ def processOutputMessage(cnx, ss):
             except Queue.Empty:
                 break
             # send
-            cnx.send(xmpp.Message(u, '%s;%s' % (m, k)))
+            cnx.send(xmpp.Message(u, m))
 
 def main():
     sessions = {}

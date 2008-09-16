@@ -25,3 +25,4 @@
 
 # constant
 sessionIDLength = 20
+timeout         = 30
