@@ -24,35 +24,44 @@
 #############################################################################
 
 from stunclient import *
+from parseconf import *
 from threading import Thread
-import xmpp, random, re, socket, Queue, time, select, common
+import xmpp, random, re, socket, Queue, time, select, common, getpass
 
 # global messages list
 messages = []
+# global varibles
+quitNow = False
 
-class ServerConf(object):
+class ServerConf(ParseConf):
     '''server configuration'''
-    def __init__(self, confFile):
-        self.confFile = confFile
-
     def getToAddr(self):
-        return ('127.0.0.1', 1194)
+        addr = self.getValue('to')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
 
     def getNetType(self):
-        #return NET_TYPE_OPENED
-        return NET_TYPE_SYM_NAT
+        t = self.getValue('net_type')
+        return int(t)
     
     def getStunServer(self):
-        return ('stunserver.org', 3478)
+        addr = self.getValue('stun_server')
+        (h, _, p) = addr.partition(':')
+        if p == '':
+            return (h, 3478)
+        else:
+            return (h, int(p))
     
     def getLoginInfo(self):
-        return ('openvpn.nat.server', '***')
+        u = self.getValue('i')
+        p = getpass.getpass('Password for %s: ' % u)
+        return (u, p)
 
     def getAdminUser(self):
-        return ('openvpn.nat@gmail.com')
+        return self.getValue('admin')
 
     def getAllowedUser(self):
-        return ('openvpn.nat.user@gmail.com')
+        return self.getValue('allowed_user').split()
 
 def xmppMessageCB(cnx, msg):
     u = msg.getFrom()
@@ -186,6 +195,9 @@ class WorkerThread(Thread):
                 # iQueue, mainly for management
                 # preserve connection
                 fromSock.sendto('', self.srcAddr)
+            # quit?
+            if quitNow:
+                break
 
     def sendXmppMessage(self, m):
         self.oQueue.put(m)
@@ -290,6 +302,8 @@ def processOutputMessage(cnx, ss):
             cnx.send(xmpp.Message(u, m))
 
 def main():
+    global quitNow
+
     sessions = {}
 
     # open server configuration file
@@ -308,16 +322,21 @@ def main():
     (user, passwd) = serverConf.getLoginInfo()
     # wait for messages from xmpp
     while True:
-        # the outer 'while' is for connection lost.
-        cnx = xmppListen(user, passwd)
-        while True:
-            ret = cnx.Process(1)
-            if not ret:
-                print 'Lost connection.'
-                break
-            # process messages
-            processInputMessages(serverConf, messages, sessions)
-            processOutputMessage(cnx, sessions)
+        try:
+            # the outer 'while' is for connection lost.
+            cnx = xmppListen(user, passwd)
+            while True:
+                ret = cnx.Process(1)
+                if not ret:
+                    print 'Lost connection.'
+                    break
+                # process messages
+                processInputMessages(serverConf, messages, sessions)
+                processOutputMessage(cnx, sessions)
+        except KeyboardInterrupt:
+            quitNow = True
+            print 'Quit Now...'
+            break
 
 if __name__ == '__main__':
     main()

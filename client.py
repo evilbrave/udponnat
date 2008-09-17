@@ -24,32 +24,39 @@
 #############################################################################
 
 from stunclient import *
+from parseconf import *
 from threading import Thread
-import xmpp, random, re, socket, Queue, time, select, common
+import xmpp, random, re, socket, Queue, time, select, common, getpass
 
 # global messages list
 messages = []
 
-class ClientConf(object):
-    '''server configuration'''
-    def __init__(self, confFile):
-        self.confFile = confFile
-
+class ClientConf(ParseConf):
+    '''client configuration'''
     def getListenAddr(self):
-        return ('127.0.0.1', 1194)
+        addr = self.getValue('listen')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
 
     def getNetType(self):
-        return NET_TYPE_OPENED
-        #return NET_TYPE_SYM_NAT
+        t = self.getValue('net_type')
+        return int(t)
     
     def getStunServer(self):
-        return ('stunserver.org', 3478)
+        addr = self.getValue('stun_server')
+        (h, _, p) = addr.partition(':')
+        if p == '':
+            return (h, 3478)
+        else:
+            return (h, int(p))
     
     def getLoginInfo(self):
-        return ('openvpn.nat.user', '***')
+        u = self.getValue('i')
+        p = getpass.getpass('Password for %s: ' % u)
+        return (u, p)
 
     def getServerUser(self):
-        return ('openvpn.nat.server@gmail.com')
+        return self.getValue('server_user')
 
 def xmppMessageCB(cnx, msg):
     u = msg.getFrom()
