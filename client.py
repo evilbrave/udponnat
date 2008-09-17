@@ -133,13 +133,13 @@ def main():
         if content:
             break
     else:
-        print 'Failed to establish connection: Timeout.'
+        print 'Failed to establish new connection: Timeout.'
         return
 
     # process reply
     if re.match(r'^Cannot;\d+;[a-z]{%d}$' % common.sessionIDLength, content):
         # Cannot
-        print 'Failed to establish connection: NetType dismatched.'
+        print 'Failed to establish new connection: NetType dismatched.'
         return
     elif re.match(r'^Do;IA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
@@ -150,7 +150,7 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to establish connection: Invalid Server Reply.'
+            print 'Failed to establish new connection: Invalid Server Reply.'
             return
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
@@ -170,7 +170,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to establish connection: Timout.'
+            print 'Failed to establish new connection: Timout.'
             return
     elif re.match(r'^Do;IB;[a-z]{%d}$' % common.sessionIDLength, content):
         # IB, wait for server's request
@@ -190,13 +190,13 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to establish connection: Timout.'
+            print 'Failed to establish new connection: Timout.'
             return
         # send client hi (udp)
         toSock.sendto('Welcome;%s' % s, serverAddr)
     else:
         # wrong reply
-        print 'Failed to establish connection: Invalid Server Reply.'
+        print 'Failed to establish new connection: Invalid Server Reply.'
         return
 
     print 'Connection established.'

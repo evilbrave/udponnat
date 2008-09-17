@@ -85,10 +85,20 @@ def randStr():
         s += random.choice('abcdefghijklmnopqrstuvwxyz')
     return s
 
+class WorkerError(Exception):
+    pass
+
+class EstablishError(WorkerError):
+    def __init__(self, reason):
+        self.reason = reason
+
+    def __str__(self):
+        return '<Establish Error: %s>' % self.reason
+
 class WorkerThread(Thread):
     '''worker thread'''
     def __init__(self, toAddr, myNetType, iQueue, oQueue, sessKey, \
-                 srcNetType, srcAddr):
+                 srcNetType, srcAddr, srcUser):
         Thread.__init__(self)
         self.toAddr = toAddr
         self.myNetType = myNetType 
@@ -97,6 +107,7 @@ class WorkerThread(Thread):
         self.sessKey = sessKey 
         self.srcNetType = srcNetType 
         self.srcAddr = srcAddr
+        self.srcUser = srcUser
         # other
         self.toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
 
@@ -114,11 +125,19 @@ class WorkerThread(Thread):
         elif self.myNetType == NET_TYPE_OPENED \
              or self.myNetType == NET_TYPE_FULLCONE_NAT:
             # tell client to connect
-            if not self.establishIA((myIP, myPort), fromSock):
+            try:
+                self.establishIA((myIP, myPort), fromSock)
+            except EstablishError, e:
+                print 'Failed to establish new connection with %s at %s: %s.' \
+                      % (self.srcUser, self.srcAddr, e)
                 return
         elif self.srcNetType == NET_TYPE_OPENED \
              or self.srcNetType == NET_TYPE_FULLCONE_NAT:
-            if not self.establishIB(fromSock):
+            try:
+                self.establishIB(fromSock)
+            except EstablishError, e:
+                print 'Failed to establish new connection with %s at %s: %s.' \
+                      % (self.srcUser, self.srcAddr, e)
                 return
         # restrict?
         elif self.myNetType == NET_TYPE_REST_FIREWALL \
@@ -155,6 +174,8 @@ class WorkerThread(Thread):
             self.failedToEstablish(1)
             return
 
+        print 'Established new connection with %s at %s.' \
+              % (self.srcUser, self.srcAddr)
         # non-blocking IO
         fromSock.setblocking(False)
         self.toSock.setblocking(False)
@@ -165,7 +186,7 @@ class WorkerThread(Thread):
             (rs, _, es) = select.select([fromSock, self.toSock], [], [], 1)
             if len(es) != 0:
                 # error
-                print 'Transfer error.'
+                #print 'Transfer error.'
                 break
             if fromSock in rs:
                 # fromSock is ready for read
@@ -209,11 +230,11 @@ class WorkerThread(Thread):
             return None
 
     def failedToEstablish(self, reason):
-        print 'failedToEstablish(%d)' % reason
+        #print 'failedToEstablish(%d)' % reason
         self.sendXmppMessage('Cannot;%d;%s' % (reason, self.sessKey))
 
     def establishIA(self, addr, sock):
-        print 'establishIA()'
+        #print 'establishIA()'
         self.sendXmppMessage('Do;IA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
         # wait for udp packet
         sock.settimeout(1)
@@ -227,13 +248,13 @@ class WorkerThread(Thread):
             if data == 'Hi;%s' % self.sessKey:
                 sock.sendto('Welcome;%s' % self.sessKey, fro)
                 self.srcAddr = fro
-                return True
-        # timeout
-        print 'Failed to establish connection: Timout.'
-        return False
+                return
+        else:
+            # timeout
+            raise EstablishError('Timeout')
 
     def establishIB(self, sock):
-        print 'establishIB()'
+        #print 'establishIB()'
         # tell client to wait for udp request
         self.sendXmppMessage('Do;IB;%s' % self.sessKey)
         # try to send udp packet
@@ -247,10 +268,10 @@ class WorkerThread(Thread):
                 continue
             # got some data
             if fro == self.srcAddr and data == 'Welcome;%s' % self.sessKey:
-                return True
-        # timeout
-        print 'Failed to establish connection: Timout.'
-        return False
+                return
+        else:
+            # timeout
+            raise EstablishError('Timeout')
 
 def processInputMessages(sc, ms, ss):
     while True:
@@ -284,7 +305,7 @@ def processInputMessages(sc, ms, ss):
                 continue
             p = int(c.split(';')[2].split(':')[1])
             wt = WorkerThread(sc.getToAddr(), sc.getNetType(), iq, oq, k, t, \
-                              (ip, p))
+                              (ip, p), u.rpartition('/')[0])
             ss[k] = (u, iq, oq)
             wt.start()
 
