@@ -163,14 +163,14 @@ class WorkerThread(Thread):
                  and self.myNetType == NET_TYPE_SYM_NAT:
                 self.establishVB((myIP, myPort), fromSock)
             else:
-                self.failedToEstablish('NetType dismatched')
-                raise EstablishError('NetType dismatched')
+                self.failedToEstablish('Peer\'s NetType dismatched')
+                raise EstablishError('Peer\'s NetType dismatched')
         except EstablishError, e:
-            print 'Failed to establish new connection with %s at %s: %s.' \
+            print 'Failed to accept new connection from %s at %s: %s.' \
                   % (self.srcUser, self.srcAddr, e)
             return
 
-        print 'Established new connection with %s at %s.' \
+        print 'Accept new connection from %s at %s.' \
               % (self.srcUser, self.srcAddr)
         # non-blocking IO
         fromSock.setblocking(False)
@@ -414,7 +414,7 @@ class WorkerThread(Thread):
             # send udp packet
             sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
             # tell client we have sent.
-            self.sendXmppMessage('Do;VBTried;%s' % self.sessKey)
+            self.sendXmppMessage('Done;VBSent;%s' % self.sessKey)
             # wait for any message, both udp and xmpp.
             sock.setblocking(False)
             ct = time.time()
@@ -482,6 +482,13 @@ def processInputMessages(sc, ms, ss):
             wt.start()
         elif re.match(r'^Ack;[A-Z]{2,3};[a-z]{%d}$' % common.sessionIDLength, c): 
             # Ack
+            k = c.split(';')[2]
+            if k in ss.keys():
+                (mu, iq, _) = ss[k]
+                if mu == u:
+                    iq.put(c)
+        elif re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' % common.sessionIDLength, c):
+            # Cannot
             k = c.split(';')[2]
             if k in ss.keys():
                 (mu, iq, _) = ss[k]

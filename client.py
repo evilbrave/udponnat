@@ -133,14 +133,14 @@ def main():
         if content:
             break
     else:
-        print 'Failed to establish new connection: Timeout.'
+        print 'Failed to connect server: Timeout.'
         return
 
     # process reply
     if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' \
                 % common.sessionIDLength, content):
         # Cannot
-        print 'Failed to establish new connection: %s.' % content.split(';')[1]
+        print 'Failed to connect server: %s.' % content.split(';')[1]
         return
     elif re.match(r'^Do;IA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
@@ -151,7 +151,7 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to establish new connection: Invalid Server Reply.'
+            print 'Failed to connect server: Invalid Server Reply.'
             return
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
@@ -171,7 +171,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to establish new connection: Timout.'
+            print 'Failed to connect server: Timout.'
             return
     elif re.match(r'^Do;IB;[a-z]{%d}$' % common.sessionIDLength, content):
         # IB, wait for server's request
@@ -191,7 +191,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to establish new connection: Timout.'
+            print 'Failed to connect server: Timout.'
             return
         # send client hi (udp)
         toSock.sendto('Welcome;%s' % s, serverAddr)
@@ -207,7 +207,7 @@ def main():
                 socket.inet_aton(ip)
             except socket.error:
                 # invalid ip
-                print 'Failed to establish new connection: Invalid Server Reply.'
+                print 'Failed to connect server: Invalid Server Reply.'
                 return
             p = int(content.split(';')[2].split(':')[1])
             s = content.split(';')[3]
@@ -239,7 +239,7 @@ def main():
                 if content:
                     break
             else:
-                print 'Failed to establish new connection: Timeout.'
+                print 'Failed to connect server: Timeout.'
                 return
             # is it ok?
             if established:
@@ -248,12 +248,12 @@ def main():
             if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' \
                         % common.sessionIDLength, content):
                 # Cannot
-                print 'Failed to establish new connection: %s.' \
+                print 'Failed to connect server: %s.' \
                       % content.split(';')[1]
                 return
             else:
                 # wrong reply
-                print 'Failed to establish new connection: Invalid Server Reply.'
+                print 'Failed to connect server: Invalid Server Reply.'
                 return
     elif re.match(r'^Do;VB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
@@ -261,17 +261,15 @@ def main():
         startScan = 32000
         rangeScope = 500
         established = False
-
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
         try:
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to establish new connection: Invalid Server Reply.'
+            print 'Failed to connect server: Invalid Server Reply.'
             return
         s = content.split(';')[3]
-
         # scan
         for p in range(startScan + 1, startScan + 65536):
             # punch
@@ -280,7 +278,7 @@ def main():
             if p % rangeScope == 0 or p % 65536 == startScan - 1:
                 # tell server to try to connect
                 cnx.send(xmpp.Message(serverUser, 'Ack;VB;%s' % s))
-                # wait for VBTried
+                # wait for DONE
                 ct = time.time()
                 while time.time() - ct < common.timeout:
                     ret = cnx.Process(1)
@@ -289,10 +287,10 @@ def main():
                         return
                     # process messages
                     content = gotReply(messages, serverUser)
-                    if content == 'Do;VBTried;%s' % s:
+                    if content == 'Done;VBSent%s' % s:
                         break
                 else:
-                    print 'Failed to establish new connection: Timeout.'
+                    print 'Failed to connect server: Timeout.'
                     return
                 # have we received server's hello?
                 toSock.setblocking(False)
@@ -313,11 +311,11 @@ def main():
         else:
             # tell server cannot established
             cnx.send(xmpp.Message(serverUser, 'Cannot;Failed to try;%s' % s))
-            print 'Failed to establish new connection: Failed to try.'
+            print 'Failed to connect server: Failed to try.'
             return
     else:
         # wrong reply
-        print 'Failed to establish new connection: Invalid Server Reply.'
+        print 'Failed to connect server: Invalid Server Reply.'
         return
 
     print 'Connection established.'
