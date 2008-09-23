@@ -25,7 +25,8 @@
         III,向client的IP:PORT发送一个包打洞,然后xmpp通知client连接server的IP:PORT.
         IV,如果server为Port Restricted,xmpp通知client创建新socket,绑定新端口,listen,向server的IP:PORT打洞同时获取新映射地址,然后将新的映射地址xmpp发送到server,server试图连接client的一个port段.
            如果client为Port Restricted,server创建新socket,绑定新端口,listen,向client打洞同时获取新映射地址,然后将新的映射地址xmpp通知client,client试图连接server的一个port段.
-        V,如果server为Port Restricted,则向client的port区域PR1发包,然后xmpp通知client向server的IP:PORT发包并在发送完毕后通过xmpp告诉server,如收到client的udp包则连接建立,否则继续向新区域PR*发包,直到遍历完整个client的所有port.
+        V,如果server为Port Restricted,则向client的port区域PR1打洞,然后xmpp通知client向server的IP:PORT发包并在发送完毕后通过xmpp告诉server,如收到client的udp包则连接建立,否则继续向新区域PR*打洞,直到遍历完整个client的所有port.
+          如果client为Port Restricted,server xmpp通知(VB)client开始向server的做区域PR1打洞,然后由client打洞,并xmpp通知(Ack)server向client的IP:PORT发包且在发送完毕后通过xmpp告诉(VBTried)client,如收到server的udp包则连接建立,否则继续向新区域PR*打洞,直到遍历完整个server的所有port.
     5, 连接建立后停止维持Cone类型NAT映射.
 
 通信包格式:
@@ -46,9 +47,20 @@
             * IV
             Do;IVA;IP:PORT;SESSID
             Do;IVB;IP:PORT;SESSID
+            * IV
+            Do;VA;IP:PORT;SESSID
+            Do;VB;IP:PORT;SESSID
+            Do;VBTried;SESSID
         client cmd:
+            * Impossible to connect.
+            Cannot;REASON;SESSID
+            * II
+            Ack;IIB;SESSID
             * IV
             Do;IVA;IP:PORT;SESSID
+            * V
+            Ack;VA;SESSID
+            Ack;VB;SESSID
 
     udp packet: plain-text
         * Request

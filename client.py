@@ -126,7 +126,7 @@ def main():
     while time.time() - ct < common.timeout:
         ret = cnx.Process(1)
         if not ret:
-            print 'Lost connection.'
+            print 'XMPP lost connection.'
             return
         # process messages
         content = gotReply(messages, serverUser)
@@ -137,9 +137,10 @@ def main():
         return
 
     # process reply
-    if re.match(r'^Cannot;\d+;[a-z]{%d}$' % common.sessionIDLength, content):
+    if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' \
+                % common.sessionIDLength, content):
         # Cannot
-        print 'Failed to establish new connection: NetType dismatched.'
+        print 'Failed to establish new connection: %s.' % content.split(';')[1]
         return
     elif re.match(r'^Do;IA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
@@ -194,6 +195,126 @@ def main():
             return
         # send client hi (udp)
         toSock.sendto('Welcome;%s' % s, serverAddr)
+    elif re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.sessionIDLength, content):
+        established = False
+        while re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                       % common.sessionIDLength, content):
+            # VA, prepare to connect server
+            # parse server reply
+            ip = content.split(';')[2].split(':')[0]
+            try:
+                socket.inet_aton(ip)
+            except socket.error:
+                # invalid ip
+                print 'Failed to establish new connection: Invalid Server Reply.'
+                return
+            p = int(content.split(';')[2].split(':')[1])
+            s = content.split(';')[3]
+            # send client hi (udp)
+            toSock.sendto('Hi;%s' % s, (ip, p))
+            # send Ack (xmpp)
+            cnx.send(xmpp.Message(serverUser, 'Ack;VA;%s' % s))
+            # wait for any message, both udp and xmpp.
+            toSock.setblocking(False)
+            ct = time.time()
+            while time.time() - ct < common.timeout:
+                ret = cnx.Process(1)
+                if not ret:
+                    print 'XMPP lost connection.'
+                    return
+                # did we receive server's 'Welcome'(udp)?
+                try:
+                    (data, fro) = toSock.recvfrom(2048)
+                    # got some data
+                    if fro == (ip, p) and data == 'Welcome;%s' % s:
+                        # connection established
+                        serverAddr = fro
+                        established = True
+                        break
+                except socket.error:
+                    pass
+                # process messages
+                content = gotReply(messages, serverUser)
+                if content:
+                    break
+            else:
+                print 'Failed to establish new connection: Timeout.'
+                return
+            # is it ok?
+            if established:
+                break
+        else:
+            if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' \
+                        % common.sessionIDLength, content):
+                # Cannot
+                print 'Failed to establish new connection: %s.' \
+                      % content.split(';')[1]
+                return
+            else:
+                # wrong reply
+                print 'Failed to establish new connection: Invalid Server Reply.'
+                return
+    elif re.match(r'^Do;VB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.sessionIDLength, content):
+        # VB, wait for server's request
+        startScan = 32000
+        rangeScope = 500
+        established = False
+
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to establish new connection: Invalid Server Reply.'
+            return
+        s = content.split(';')[3]
+
+        # scan
+        for p in range(startScan + 1, startScan + 65536):
+            # punch
+            toSock.sendto('Punch', (ip, p % 65536))
+            # should we tell server to connect?
+            if p % rangeScope == 0 or p % 65536 == startScan - 1:
+                # tell server to try to connect
+                cnx.send(xmpp.Message(serverUser, 'Ack;VB;%s' % s))
+                # wait for VBTried
+                ct = time.time()
+                while time.time() - ct < common.timeout:
+                    ret = cnx.Process(1)
+                    if not ret:
+                        print 'XMPP lost connection.'
+                        return
+                    # process messages
+                    content = gotReply(messages, serverUser)
+                    if content == 'Do;VBTried;%s' % s:
+                        break
+                else:
+                    print 'Failed to establish new connection: Timeout.'
+                    return
+                # have we received server's hello?
+                toSock.setblocking(False)
+                while True:
+                    try:
+                        (data, fro) = toSock.recvfrom(2048)
+                    except socket.error:
+                        break
+                    # got some data
+                    if data == 'Hi;%s' % s:
+                        toSock.sendto('Welcome;%s' % s, fro)
+                        serverAddr = fro
+                        established = True
+                        break
+                # is it ok?
+                if established:
+                    break
+        else:
+            # tell server cannot established
+            cnx.send(xmpp.Message(serverUser, 'Cannot;Failed to try;%s' % s))
+            print 'Failed to establish new connection: Failed to try.'
+            return
     else:
         # wrong reply
         print 'Failed to establish new connection: Invalid Server Reply.'
