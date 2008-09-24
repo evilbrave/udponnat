@@ -30,12 +30,11 @@ NET_TYPE_OPENED = 0
 NET_TYPE_FULLCONE_NAT = 1
 NET_TYPE_REST_FIREWALL = 2
 NET_TYPE_REST_NAT = 3
-NET_TYPE_REST_SYM_NAT_LOCAL = 4
-NET_TYPE_PORTREST_FIREWALL = 5
-NET_TYPE_PORTREST_NAT = 6
-NET_TYPE_PORTREST_SYM_NAT_LOCAL = 7
-NET_TYPE_SYM_NAT = 8
-NET_TYPE_UDP_BLOCKED = 9
+NET_TYPE_PORTREST_FIREWALL = 4
+NET_TYPE_PORTREST_NAT = 5
+NET_TYPE_SYM_NAT_LOCAL = 6
+NET_TYPE_SYM_NAT = 7
+NET_TYPE_UDP_BLOCKED = 8
 
 class STUNError(Exception):
     pass
@@ -50,6 +49,7 @@ class ServerError(STUNError):
 class STUNClient(object):
     '''A STUN client implementated by Python.'''
     # constant
+    LocalRange = 100
     # Message Types
     BindingRequest = 0x0001
     BindingResponse = 0x0101
@@ -200,7 +200,7 @@ class STUNClient(object):
         '''
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(self.timeout)
+        self.sock.settimeout(1)
 
         ret = self.testI1()
         if ret == STUNClient.RET_TEST_I1_UDP_BLOCKED:
@@ -224,11 +224,7 @@ class STUNClient(object):
                 if ret == STUNClient.RET_TEST_I2_IP_DIFF:
                     ret = self.testIV()
                     if ret == STUNClient.RET_TEST_IV_LOCAL:
-                        ret = self.testIII()
-                        if ret == STUNClient.RET_TEST_III_GOT_RESP:
-                            netType = NET_TYPE_REST_SYM_NAT_LOCAL
-                        else:
-                            netType = NET_TYPE_PORTREST_SYM_NAT_LOCAL
+                        netType = NET_TYPE_SYM_NAT_LOCAL
                     else:
                         netType = NET_TYPE_SYM_NAT
                 else:
@@ -471,6 +467,8 @@ class STUNClient(object):
                 mappedPort = p
         if mappedIP == '':
             raise ServerError, 'Invalid server\'s response.'
+        #print '%s:%d' % (self.mappedIP, self.mappedPort)
+        #print '%s:%d' % (mappedIP, mappedPort)
         if mappedIP == self.mappedIP and mappedPort == self.mappedPort:
             return STUNClient.RET_TEST_I2_IP_SAME
         else:
@@ -511,7 +509,7 @@ class STUNClient(object):
 
     def testIV(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(self.timeout)
+        sock.settimeout(1)
 
         # make request packet
         req = struct.pack('!HHIIII', STUNClient.BindingRequest, 0, 
@@ -610,7 +608,8 @@ class STUNClient(object):
 
         #print 'mappedPort1 = %d, mappedPort2 = %d' % (mappedPort1, mappedPort2)
         if mappedIP1 == mappedIP2 \
-           and mappedPort1 in range(mappedPort2 - 100, mappedPort2 + 100):
+           and mappedPort1 in range(mappedPort2 - self.LocalRange, 
+                                    mappedPort2 + self.LocalRange):
             return STUNClient.RET_TEST_IV_LOCAL
         return STUNClient.RET_TEST_IV_DIFF
 
@@ -623,19 +622,16 @@ class STUNClient(object):
             return 'Restricted Firewall(%d)' % NET_TYPE_REST_FIREWALL
         elif t == NET_TYPE_REST_NAT:
             return 'Restricted Cone NAT(%d)' % NET_TYPE_REST_NAT
-        elif t == NET_TYPE_REST_SYM_NAT_LOCAL:
-            return 'Restricted Symmetric NAT with Localization(%d)' % NET_TYPE_REST_SYM_NAT_LOCAL
         elif t == NET_TYPE_PORTREST_FIREWALL:
             return 'Port Restricted Firewall(%d)' % NET_TYPE_PORTREST_FIREWALL
         elif t == NET_TYPE_PORTREST_NAT:
             return 'Port Restricted Cone NAT(%d)' % NET_TYPE_PORTREST_NAT
-        elif t == NET_TYPE_PORTREST_SYM_NAT_LOCAL:
-            return 'Port Restricted Symmetric NAT with Localization(%d)' % NET_TYPE_PORTREST_SYM_NAT_LOCAL
+        elif t == NET_TYPE_SYM_NAT_LOCAL:
+            return 'Symmetric NAT with Localization(%d)' % NET_TYPE_SYM_NAT_LOCAL
         elif t == NET_TYPE_SYM_NAT:
             return 'Symmetric NAT(%d)' % NET_TYPE_SYM_NAT
         elif t == NET_TYPE_UDP_BLOCKED:
             return 'Blocked(%d)' % NET_TYPE_UDP_BLOCKED
-
 
 if __name__ == '__main__':
     sc = STUNClient()
