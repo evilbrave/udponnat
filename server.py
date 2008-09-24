@@ -147,12 +147,12 @@ class WorkerThread(Thread):
             # one port restrict and one symmetric with localization
             elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
                   or self.myNetType == NET_TYPE_PORTREST_NAT) \
-                 and self.srcNetType == NET_TYPE_PORTREST_SYM_NAT_LOCAL:
-                return
+                 and self.srcNetType == NET_TYPE_SYM_NAT_LOCAL:
+                self.establishVA((myIP, myPort), fromSock)
             elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
                   or self.srcNetType == NET_TYPE_PORTREST_NAT) \
-                 and self.myNetType == NET_TYPE_PORTREST_SYM_NAT_LOCAL:
-                return
+                 and self.myNetType == NET_TYPE_SYM_NAT_LOCAL:
+                self.establishVB((myIP, myPort), fromSock)
             # one port restrict and one symmetric
             elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
                   or self.myNetType == NET_TYPE_PORTREST_NAT) \
@@ -272,85 +272,82 @@ class WorkerThread(Thread):
             raise EstablishError('Timeout')
 
     def establishIIA(self, addr, sock):
-        pass
         #print 'establishIIA()'
-        ## punch
-        #sock.sendto('Punch', self.srcAddr)
-        ## tell client to connect
-        #self.sendXmppMessage('Do;IIA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
-        ## wait for udp packet
-        #sock.settimeout(1)
-        #ct = time.time()
-        #while time.time() - ct < common.timeout:
-        #    try:
-        #        (data, fro) = sock.recvfrom(2048)
-        #    except socket.timeout:
-        #        continue
-        #    # got some data
-        #    if data == 'Hi;%s' % self.sessKey:
-        #        sock.sendto('Welcome;%s' % self.sessKey, fro)
-        #        self.srcAddr = fro
-        #        return
-        #else:
-        #    # timeout
-        #    raise EstablishError('Timeout')
+        # punch
+        sock.sendto('Punch', self.srcAddr)
+        # tell client to connect
+        self.sendXmppMessage('Do;IIA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
+        # wait for udp packet
+        sock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = sock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if data == 'Hi;%s' % self.sessKey:
+                sock.sendto('Welcome;%s' % self.sessKey, fro)
+                self.srcAddr = fro
+                return
+        else:
+            # timeout
+            raise EstablishError('Timeout')
 
     def establishIIB(self, addr, sock):
-        pass
         #print 'establishIIB()'
-        ## tell client to punch and wait for udp request
-        #self.sendXmppMessage('Do;IIB;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
-        ## wait for Ack
-        #ct = time.time()
-        #while time.time() - ct < common.timeout:
-        #    m = self.waitXmppMessage()
-        #    if not m:
-        #        continue
-        #    # got message
-        #    if m == 'Ack;IIB;%s' % self.sessKey:
-        #        break
-        #else:
-        #    # timeout
-        #    raise EstablishError('Timeout')
-        ## try to send udp packet
-        #sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
-        #sock.settimeout(1)
-        #ct = time.time()
-        #while time.time() - ct < common.timeout:
-        #    try:
-        #        (data, fro) = sock.recvfrom(2048)
-        #    except socket.timeout:
-        #        continue
-        #    # got some data
-        #    if fro == self.srcAddr and data == 'Welcome;%s' % self.sessKey:
-        #        return
-        #else:
-        #    # timeout
-        #    raise EstablishError('Timeout')
+        # tell client to punch and wait for udp request
+        self.sendXmppMessage('Do;IIB;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
+        # wait for Ack
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            m = self.waitXmppMessage()
+            if not m:
+                continue
+            # got message
+            if m == 'Ack;IIB;%s' % self.sessKey:
+                break
+        else:
+            # timeout
+            raise EstablishError('Timeout')
+        # try to send udp packet
+        sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
+        sock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = sock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if fro == self.srcAddr and data == 'Welcome;%s' % self.sessKey:
+                return
+        else:
+            # timeout
+            raise EstablishError('Timeout')
 
     def establishIII(self, addr, sock):
-        pass
         #print 'establishIII()'
-        ## punch
-        #sock.sendto('Punch', self.srcAddr)
-        ## tell client to connect
-        #self.sendXmppMessage('Do;III;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
-        ## wait for udp packet
-        #sock.settimeout(1)
-        #ct = time.time()
-        #while time.time() - ct < common.timeout:
-        #    try:
-        #        (data, fro) = sock.recvfrom(2048)
-        #    except socket.timeout:
-        #        continue
-        #    # got some data
-        #    if data == 'Hi;%s' % self.sessKey:
-        #        sock.sendto('Welcome;%s' % self.sessKey, fro)
-        #        self.srcAddr = fro
-        #        return
-        #else:
-        #    # timeout
-        #    raise EstablishError('Timeout')
+        # punch
+        sock.sendto('Punch', self.srcAddr)
+        # tell client to connect
+        self.sendXmppMessage('Do;III;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
+        # wait for udp packet
+        sock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = sock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if data == 'Hi;%s' % self.sessKey:
+                sock.sendto('Welcome;%s' % self.sessKey, fro)
+                self.srcAddr = fro
+                return
+        else:
+            # timeout
+            raise EstablishError('Timeout')
 
     def establishVA(self, addr, sock):
         #print 'establishVA()'
@@ -522,8 +519,6 @@ def main():
         # blocked
         print 'UDP is blocked by the firewall, QUIT!'
         return
-    if netType == NET_TYPE_REST_SYM_NAT_LOCAL:
-        netType = NET_TYPE_PORTREST_SYM_NAT_LOCAL
     
     # get user info of xmpp(gtalk) 
     (user, passwd) = serverConf.getLoginInfo()

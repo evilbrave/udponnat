@@ -100,8 +100,6 @@ def main():
         # blocked
         print 'UDP is blocked by the firewall, QUIT!'
         return
-    if netType == NET_TYPE_REST_SYM_NAT_LOCAL:
-        netType = NET_TYPE_PORTREST_SYM_NAT_LOCAL
     
     # create listened socket 
     listenSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
@@ -189,12 +187,107 @@ def main():
             if data == 'Hi;%s' % s:
                 # connection established
                 serverAddr = fro
+                # send client Welcome (udp)
+                toSock.sendto('Welcome;%s' % s, serverAddr)
                 break
         else:
             print 'Failed to connect server: Timout.'
             return
+    elif re.match(r'^Do;IIA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.sessionIDLength, content):
+        # IIA, prepare to connect server
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to connect server: Invalid Server Reply.'
+            return
+        p = int(content.split(';')[2].split(':')[1])
+        s = content.split(';')[3]
         # send client hi (udp)
-        toSock.sendto('Welcome;%s' % s, serverAddr)
+        toSock.sendto('Hi;%s' % s, (ip, p))
+        # wait for server's 'Welcome' (udp)
+        toSock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = toSock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if fro == (ip, p) and data == 'Welcome;%s' % s:
+                # connection established
+                serverAddr = fro
+                break
+        else:
+            print 'Failed to connect server: Timout.'
+            return
+    elif re.match(r'^Do;IIB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.sessionIDLength, content):
+        # IIB, punch and wait for server's request
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to connect server: Invalid Server Reply.'
+            return
+        p = int(content.split(';')[2].split(':')[1])
+        s = content.split(';')[3]
+        # punch
+        toSock.sendto('Punch', (ip, p))
+        # wait for server's 'Hi' (udp)
+        toSock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = toSock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if data == 'Hi;%s' % s:
+                # connection established
+                serverAddr = fro
+                # send client Welcome (udp)
+                toSock.sendto('Welcome;%s' % s, serverAddr)
+                break
+        else:
+            print 'Failed to connect server: Timout.'
+            return
+    elif re.match(r'^Do;III;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.sessionIDLength, content):
+        # III, prepare to connect server
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to connect server: Invalid Server Reply.'
+            return
+        p = int(content.split(';')[2].split(':')[1])
+        s = content.split(';')[3]
+        # send client hi (udp)
+        toSock.sendto('Hi;%s' % s, (ip, p))
+        # wait for server's 'Welcome' (udp)
+        toSock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = toSock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if fro == (ip, p) and data == 'Welcome;%s' % s:
+                # connection established
+                serverAddr = fro
+                break
+        else:
+            print 'Failed to connect server: Timout.'
+            return
     elif re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
         established = False

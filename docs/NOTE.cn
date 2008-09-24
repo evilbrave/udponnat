@@ -3,7 +3,7 @@
     1, 一端网络类型为Opened/Full Cone NAT,则判定可通信,无须再判断另一端网络类型,类型I.
     2, 一端网络类型为Restricted Firewall/Restricted Cone NAT,则判定可通信,无须再判断另一端网络类型,类型II.
     3, 两端网络类型均为Port Restricted Firewall/Port Restricted Cone NAT,则判定可通信,类型III.
-    4, 一端网络类型为Port Restricted Firewall/Port Restricted Cone NAT,另一端网络类型为Symmetric NAT with Localization,可尝试通信,类型IV.
+    4, (*这种暂时不单独实现了,归入Symmetric NAT)一端网络类型为Port Restricted Firewall/Port Restricted Cone NAT,另一端网络类型为Symmetric NAT with Localization,可尝试通信,类型IV.
     5, 一端网络类型为Port Restricted Firewall/Port Restricted Cone NAT,另一端网络类型为Symmetric NAT,可尝试通信,类型V.
     6, 其他类型判定不可通信.
     *, 事实上,Restricted Symmetric NAT with Localization也有很强的通信能力,几乎等同于Restricted NAT,但这种网络比较少,暂不单独考虑,与Port Restricted Symmetric NAT with Localization同作为Symmetric NAT with Localization处理.
@@ -19,8 +19,8 @@
         II,如果server为Restricted,向client的IP:PORT发送一个包打洞,然后xmpp通知client连接server的IP:PORT.
            如果client为Restricted,xmpp通知client向server的IP:PORT打洞并准备接受连接.
         III,向client的IP:PORT发送一个包打洞,然后xmpp通知client连接server的IP:PORT.
-        IV,如果server为Port Restricted,xmpp通知client创建新socket,绑定新端口,listen,向server的IP:PORT打洞同时获取新映射地址,然后将新的映射地址xmpp发送到server,server试图连接client的一个port段.
-           如果client为Port Restricted,server创建新socket,绑定新端口,listen,向client打洞同时获取新映射地址,然后将新的映射地址xmpp通知client,client试图连接server的一个port段.
+        *IV,如果server为Port Restricted,xmpp通知client创建新socket,绑定新端口,listen,向server的IP:PORT打洞同时获取新映射地址,然后将新的映射地址xmpp发送到server,server试图连接client的一个port段.
+            如果client为Port Restricted,server创建新socket,绑定新端口,listen,向client打洞同时获取新映射地址,然后将新的映射地址xmpp通知client,client试图连接server的一个port段.
         V,如果server为Port Restricted,则向client的port区域PR1打洞,然后xmpp通知client向server的IP:PORT发包并在发送完毕后通过xmpp告诉server,之后server检查udp socket如收到client的udp包则连接建立,否则继续向新区域PR*打洞,重复以上步骤直到遍历完整个client的所有port.
           如果client为Port Restricted,server xmpp通知client开始向server的做区域(PR1)打洞,然后由client打洞,并xmpp通知(Ack)server向client的IP:PORT发包且在发送完毕后通过xmpp告诉(VBSent)client,之后client检查udp socket如收到server的udp包则连接建立,否则继续向新区域PR*打洞,重复以上步骤直到遍历完整个server的所有port.
 
@@ -36,12 +36,9 @@
             Do;IB;SESSID
             * II
             Do;IIA;IP:PORT;SESSID
-            Do;IIB;IP;SESSID
+            Do;IIB;IP;PORT;SESSID
             * III
             Do;III;IP:PORT;SESSID
-            * IV
-            Do;IVA;IP:PORT;SESSID
-            Do;IVB;IP:PORT;SESSID
             * V
             Do;VA;IP:PORT;SESSID
             Do;VB;IP:PORT;SESSID
