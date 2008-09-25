@@ -26,7 +26,8 @@
 from stunclient import *
 from parseconf import *
 from threading import Thread
-import xmpp, random, re, socket, Queue, time, select, common, getpass
+import xmpp, random, re, socket, Queue, time, select, common, getpass, md5, \
+       base64, urllib2
 
 # global messages list
 messages = []
@@ -56,6 +57,9 @@ class ServerConf(ParseConf):
         u = self.getValue('i')
         p = getpass.getpass('Password for %s: ' % u)
         return (u, p)
+
+    def getLoginUser(self):
+        return self.getValue('i')
 
     def getAdminUser(self):
         return self.getValue('admin')
@@ -97,10 +101,11 @@ class EstablishError(WorkerError):
 
 class WorkerThread(Thread):
     '''worker thread'''
-    def __init__(self, toAddr, myNetType, iQueue, oQueue, sessKey, \
+    def __init__(self, toAddr, i, myNetType, iQueue, oQueue, sessKey, \
                  srcNetType, srcAddr, srcUser):
         Thread.__init__(self)
         self.toAddr = toAddr
+        self.i = i
         self.myNetType = myNetType 
         self.iQueue = iQueue
         self.oQueue = oQueue
@@ -115,8 +120,14 @@ class WorkerThread(Thread):
         fromSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
         fromSock.settimeout(1)
         sc = STUNClient()
-        (myIP, myPort) = sc.getMappedAddr(fromSock)
-        #print 'myAddr(%s:%d)' % (myIP, myPort)
+        try:
+            (myIP, myPort) = sc.getMappedAddr(fromSock)
+            #print 'myAddr(%s:%d)' % (myIP, myPort)
+        except ServerError, e:
+            self.failedToEstablish('Server internal error')
+            print 'Failed to accept new connection from %s at %s: %s.' \
+                  % (self.srcUser, self.srcAddr, e)
+            return
 
         try:
             # have server and client got the same mapped ip?
@@ -173,6 +184,8 @@ class WorkerThread(Thread):
 
         print 'Accept new connection from %s at %s.' \
               % (self.srcUser, self.srcAddr)
+        # web report
+        self.webReport((myIP, myPort))
         # non-blocking IO
         fromSock.setblocking(False)
         self.toSock.setblocking(False)
@@ -440,6 +453,21 @@ class WorkerThread(Thread):
             else:
                 raise EstablishError('Timeout')
 
+    def webReport(self, myMappedAddr):
+        # compute digest
+        s = '%s %s %s %s' % (self.i, self.srcUser, myMappedAddr[0], self.srcAddr[0])
+        m = md5.new()
+        m.update(s)
+        digest = base64.b16encode(m.digest())
+
+        # report, setup proxy for user in china
+        proxy_support = urllib2.ProxyHandler({'http': 'www.google.cn:80'})
+        opener = urllib2.build_opener(proxy_support)
+        # install it
+        urllib2.install_opener(opener)
+        # use it
+        f = urllib2.urlopen('http://udponnat.appspot.com/stat.py?serverType=%d&clientType=%d&digest=%s' % (self.myNetType, self.srcNetType, digest))
+
 def processInputMessages(sc, ms, ss):
     while True:
         try:
@@ -471,8 +499,8 @@ def processInputMessages(sc, ms, ss):
                 # invalid ip
                 continue
             p = int(c.split(';')[2].split(':')[1])
-            wt = WorkerThread(sc.getToAddr(), sc.getNetType(), iq, oq, k, t, \
-                              (ip, p), u.partition('/')[0])
+            wt = WorkerThread(sc.getToAddr(), sc.getLoginUser(), sc.getNetType(), \
+                              iq, oq, k, t, (ip, p), u.partition('/')[0])
             ss[k] = (u, iq, oq)
             wt.start()
         elif re.match(r'^Ack;[A-Z]{2,3};[a-z]{%d}$' % common.sessionIDLength, c): 
@@ -528,7 +556,7 @@ def main():
             while True:
                 ret = cnx.Process(1)
                 if not ret:
-                    print 'Lost connection.'
+                    print 'XMPP lost connection.'
                     break
                 # process messages
                 processInputMessages(serverConf, messages, sessions)

@@ -43,7 +43,7 @@ def main():
             addrs.append(sc.getMappedAddr(sock, ss))
         except:
             pass
-        time.sleep(3)
+        time.sleep(1)
     if len(addrs) >= 2:
         for a in addrs:
             if a != addrs[0]:
