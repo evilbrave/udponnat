@@ -26,7 +26,7 @@
 from stunclient import *
 from parseconf import *
 from threading import Thread
-import xmpp, random, re, socket, Queue, time, select, common, getpass
+import xmpp, random, re, socket, Queue, time, select, common, getpass, sys
 
 # global messages list
 messages = []
@@ -376,6 +376,8 @@ def main():
         while re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                        % common.sessionIDLength, content):
             # VA, prepare to connect server
+            print '.',
+            sys.stdout.flush()
             # parse server reply
             ip = content.split(';')[2].split(':')[0]
             try:
@@ -449,6 +451,8 @@ def main():
             toSock.sendto('Punch', (ip, p % 65536))
             # should we tell server to connect?
             if p % common.symScanRange == 0 or p % 65536 == common.symScanStart - 1:
+                print '.',
+                sys.stdout.flush()
                 # tell server to try to connect
                 cnx.send(xmpp.Message(serverUser, 'Ack;VB;%s' % s))
                 # wait for DONE
@@ -460,7 +464,7 @@ def main():
                         return
                     # process messages
                     content = gotReply(messages, serverUser)
-                    if content == 'Done;VBSent%s' % s:
+                    if content == 'Done;VBSent;%s' % s:
                         break
                 else:
                     print 'Failed to connect server: Timeout.'

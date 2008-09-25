@@ -386,7 +386,7 @@ class WorkerThread(Thread):
         except socket.error:
             # invalid ip
             raise EstablishError('Invalid client message')
-        port = int(c.split(';')[2].split(':')[1])
+        port = int(m.split(';')[2].split(':')[1])
         # try to send udp packet to a range
         bp = port - STUNClient.LocalRange
         if bp < 1:
@@ -535,7 +535,8 @@ class WorkerThread(Thread):
 
     def webReport(self, myMappedAddr):
         # compute digest
-        s = '%s %s %s %s' % (self.i, self.srcUser, myMappedAddr[0], self.srcAddr[0])
+        s = '%s %s %s %s %d %d' % (self.i, self.srcUser, myMappedAddr[0], \
+                                   self.srcAddr[0], self.myNetType, self.srcNetType)
         m = md5.new()
         m.update(s)
         digest = base64.b16encode(m.digest())
