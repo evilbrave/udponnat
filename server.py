@@ -160,11 +160,11 @@ class WorkerThread(Thread):
             elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
                   or self.myNetType == NET_TYPE_PORTREST_NAT) \
                  and self.srcNetType == NET_TYPE_SYM_NAT_LOCAL:
-                self.establishVA((myIP, myPort), fromSock)
+                self.establishIVA((myIP, myPort), fromSock)
             elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
                   or self.srcNetType == NET_TYPE_PORTREST_NAT) \
                  and self.myNetType == NET_TYPE_SYM_NAT_LOCAL:
-                self.establishVB((myIP, myPort), fromSock)
+                fromSock = self.establishIVB((myIP, myPort), fromSock)
             # one port restrict and one symmetric
             elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
                   or self.myNetType == NET_TYPE_PORTREST_NAT) \
@@ -362,6 +362,86 @@ class WorkerThread(Thread):
             # timeout
             raise EstablishError('Timeout')
 
+    def establishIVA(self, addr, sock):
+        #print 'establishIVA()'
+        # tell client do IVA
+        self.sendXmppMessage('Do;IVA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
+        # wait for Ack
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            m = self.waitXmppMessage()
+            if not m:
+                continue
+            # got message
+            if re.match(r'^Ack;IVA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};%s$' \
+                        % self.sessKey, m):
+                break
+        else:
+            # timeout
+            raise EstablishError('Timeout')
+        # parse Ack to get IP:PORT
+        ip = m.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            raise EstablishError('Invalid client message')
+        port = int(c.split(';')[2].split(':')[1])
+        # try to send udp packet to a range
+        bp = port - STUNClient.LocalRange
+        if bp < 1:
+            bp = 1
+        ep = port + STUNClient.LocalRange
+        if ep > 65536:
+            ep = 65536
+        for p in range(bp, ep):
+            sock.sendto('Hi;%s' % self.sessKey, (ip, p))
+        # wait for Welcome
+        sock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = sock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if data == 'Welcome;%s' % self.sessKey:
+                self.srcAddr = fro
+                return
+        else:
+            # timeout
+            raise EstablishError('Timeout')
+
+    def establishIVB(self, addr, sock):
+        #print 'establishIVB()'
+        # new socket
+        newSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+        # punch
+        newSock.sendto('Punch', self.srcAddr)
+        # get new socket's mapped addr
+        newSock.settimeout(1)
+        sc = STUNClient()
+        (mappedIP, mappedPort) = sc.getMappedAddr(newSock)
+        # tell client the new addr (xmpp)
+        self.sendXmppMessage('Do;IVB;%s:%d;%s' % (mappedIP, mappedPort, self.sessKey))
+        # wait for client's 'Hi' (udp)
+        newSock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = newSock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if fro == self.srcAddr and data == 'Hi;%s' % self.sessKey:
+                # send client Welcome (udp)
+                newSock.sendto('Welcome;%s' % self.sessKey, fro)
+                # !!! return newSock
+                return newSock
+        else:
+            # timeout
+            raise EstablishError('Timeout')
+
     def establishVA(self, addr, sock):
         #print 'establishVA()'
         # scan
@@ -506,6 +586,14 @@ def processInputMessages(sc, ms, ss):
         elif re.match(r'^Ack;[A-Z]{2,3};[a-z]{%d}$' % common.sessionIDLength, c): 
             # Ack
             k = c.split(';')[2]
+            if k in ss.keys():
+                (mu, iq, _) = ss[k]
+                if mu == u:
+                    iq.put(c)
+        elif re.match(r'^Ack;IVA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                      % common.sessionIDLength, c):
+            # Ack
+            k = c.split(';')[3]
             if k in ss.keys():
                 (mu, iq, _) = ss[k]
                 if mu == u:

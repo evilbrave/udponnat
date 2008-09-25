@@ -170,7 +170,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to connect server: Timout.'
+            print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;IB;[a-z]{%d}$' % common.sessionIDLength, content):
         # IB, wait for server's request
@@ -192,7 +192,7 @@ def main():
                 toSock.sendto('Welcome;%s' % s, serverAddr)
                 break
         else:
-            print 'Failed to connect server: Timout.'
+            print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;IIA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
@@ -223,7 +223,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to connect server: Timout.'
+            print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;IIB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
@@ -258,7 +258,7 @@ def main():
                 toSock.sendto('Welcome;%s' % s, serverAddr)
                 break
         else:
-            print 'Failed to connect server: Timout.'
+            print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;III;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
@@ -289,7 +289,86 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to connect server: Timout.'
+            print 'Failed to connect server: Timeout.'
+            return
+    elif re.match(r'^Do;IVA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.sessionIDLength, content):
+        # IVA
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to connect server: Invalid Server Reply.'
+            return
+        p = int(content.split(';')[2].split(':')[1])
+        s = content.split(';')[3]
+        # new socket
+        toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+        # punch
+        toSock.sendto('Punch', (ip, p))
+        # get new socket's mapped addr
+        toSock.settimeout(1)
+        sc = STUNClient()
+        (mappedIP, mappedPort) = sc.getMappedAddr(toSock)
+        # tell server the new addr (xmpp)
+        cnx.send(xmpp.Message(serverUser, 'Ack;IVA;%s:%d;%s' % (mappedIP, mappedPort, s)))
+        # wait for server's 'Hi' (udp)
+        toSock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = toSock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if fro == (ip, p) and data == 'Hi;%s' % s:
+                # connection established
+                serverAddr = fro
+                # send client Welcome (udp)
+                toSock.sendto('Welcome;%s' % s, serverAddr)
+                break
+        else:
+            print 'Failed to connect server: Timeout.'
+            return
+    elif re.match(r'^Do;IVB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.sessionIDLength, content):
+        # IVB
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to connect server: Invalid Server Reply.'
+            return
+        port = int(content.split(';')[2].split(':')[1])
+        s = content.split(';')[3]
+        # send client hi (udp) to a port range
+        bp = port - STUNClient.LocalRange
+        if bp < 1:
+            bp = 1
+        ep = port + STUNClient.LocalRange
+        if ep > 65536:
+            ep = 65536
+        for p in range(bp, ep):
+            toSock.sendto('Hi;%s' % s, (ip, p))
+        # wait for server's 'Welcome' (udp)
+        toSock.settimeout(1)
+        ct = time.time()
+        while time.time() - ct < common.timeout:
+            try:
+                (data, fro) = toSock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            # got some data
+            if data == 'Welcome;%s' % s:
+                # connection established
+                serverAddr = fro
+                break
+        else:
+            print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):

@@ -49,7 +49,7 @@ class ServerError(STUNError):
 class STUNClient(object):
     '''A STUN client implementated by Python.'''
     # constant
-    LocalRange = 100
+    LocalRange = 200
     # Message Types
     BindingRequest = 0x0001
     BindingResponse = 0x0101
@@ -636,4 +636,6 @@ class STUNClient(object):
 if __name__ == '__main__':
     sc = STUNClient()
     sc.setServerAddr(('stunserver.org', 3478))
+    #sc.setServerAddr(('stun.ekiga.net', 3478))
+    #sc.setServerAddr(('stun.iptel.org', 3478))
     print 'NET TYPE:', sc.netType2String(sc.getNetType())
