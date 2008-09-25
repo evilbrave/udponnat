@@ -35,7 +35,7 @@ def main():
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
     #sock.bind(('0.0.0.0', 54321))
-    sock.settimeout(3)
+    sock.settimeout(1)
     sc = STUNClient()
     addrs = []
     for ss in stunServers:
@@ -43,6 +43,7 @@ def main():
             addrs.append(sc.getMappedAddr(sock, ss))
         except:
             pass
+        time.sleep(3)
     if len(addrs) >= 2:
         for a in addrs:
             if a != addrs[0]:

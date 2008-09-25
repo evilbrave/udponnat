@@ -81,7 +81,7 @@ def gotReply(ms, user):
         except IndexError:
             break
         # check client user
-        if u.rpartition('/')[0] != user:
+        if u.partition('/')[0] != user:
             continue
         return c
     return None
@@ -108,6 +108,7 @@ def main():
 
     # create socket and get mapped address
     toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+    toSock.settimeout(1)
     sc = STUNClient()
     (mappedIP, mappedPort) = sc.getMappedAddr(toSock)
 
@@ -239,6 +240,8 @@ def main():
         s = content.split(';')[3]
         # punch
         toSock.sendto('Punch', (ip, p))
+        # send Ack (xmpp)
+        cnx.send(xmpp.Message(serverUser, 'Ack;IIB;%s' % s))
         # wait for server's 'Hi' (udp)
         toSock.settimeout(1)
         ct = time.time()
@@ -351,8 +354,6 @@ def main():
     elif re.match(r'^Do;VB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.sessionIDLength, content):
         # VB, wait for server's request
-        startScan = 32000
-        rangeScope = 500
         established = False
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -364,11 +365,11 @@ def main():
             return
         s = content.split(';')[3]
         # scan
-        for p in range(startScan + 1, startScan + 65536):
+        for p in range(common.symScanStart + 1, common.symScanStart + 65536):
             # punch
             toSock.sendto('Punch', (ip, p % 65536))
             # should we tell server to connect?
-            if p % rangeScope == 0 or p % 65536 == startScan - 1:
+            if p % common.symScanRange == 0 or p % 65536 == common.symScanStart - 1:
                 # tell server to try to connect
                 cnx.send(xmpp.Message(serverUser, 'Ack;VB;%s' % s))
                 # wait for DONE

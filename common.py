@@ -26,3 +26,5 @@
 # constant
 sessionIDLength = 20
 timeout         = 30
+symScanStart    = 32000
+symScanRange    = 500

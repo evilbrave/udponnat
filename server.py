@@ -113,6 +113,7 @@ class WorkerThread(Thread):
 
     def run(self):
         fromSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+        fromSock.settimeout(1)
         sc = STUNClient()
         (myIP, myPort) = sc.getMappedAddr(fromSock)
         #print 'myAddr(%s:%d)' % (myIP, myPort)
@@ -341,9 +342,8 @@ class WorkerThread(Thread):
             except socket.timeout:
                 continue
             # got some data
-            if data == 'Hi;%s' % self.sessKey:
+            if fro == self.srcAddr and data == 'Hi;%s' % self.sessKey:
                 sock.sendto('Welcome;%s' % self.sessKey, fro)
-                self.srcAddr = fro
                 return
         else:
             # timeout
@@ -351,14 +351,12 @@ class WorkerThread(Thread):
 
     def establishVA(self, addr, sock):
         #print 'establishVA()'
-        startScan = 32000
-        rangeScope = 500
         # scan
-        for p in range(startScan + 1, startScan + 65536):
+        for p in range(common.symScanStart + 1, common.symScanStart + 65536):
             # punch
             sock.sendto('Punch', (self.srcAddr[0], p % 65536))
             # should we tell client to connect?
-            if p % rangeScope == 0 or p % 65536 == startScan - 1:
+            if p % common.symScanRange == 0 or p % 65536 == common.symScanStart - 1:
                 # tell client to try to connect
                 self.sendXmppMessage('Do;VA;%s:%d;%s' % \
                                      (addr[0], addr[1], self.sessKey))
@@ -451,7 +449,7 @@ def processInputMessages(sc, ms, ss):
             break
         # check client user
         #print 'user:', u
-        if u.rpartition('/')[0] not in sc.getAllowedUser():
+        if u.partition('/')[0] not in sc.getAllowedUser():
             continue
         # process content 
         #print 'content:', c
@@ -474,7 +472,7 @@ def processInputMessages(sc, ms, ss):
                 continue
             p = int(c.split(';')[2].split(':')[1])
             wt = WorkerThread(sc.getToAddr(), sc.getNetType(), iq, oq, k, t, \
-                              (ip, p), u.rpartition('/')[0])
+                              (ip, p), u.partition('/')[0])
             ss[k] = (u, iq, oq)
             wt.start()
         elif re.match(r'^Ack;[A-Z]{2,3};[a-z]{%d}$' % common.sessionIDLength, c): 
