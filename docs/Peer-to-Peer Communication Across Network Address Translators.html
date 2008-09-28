@@ -1,0 +1,2208 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=gb2312">
+
+<!--Converted with LaTeX2HTML 2002-2-1 (1.70)
+original version by:  Nikos Drakos, CBLU, University of Leeds
+* revised and updated by:  Marcus Hennecke, Ross Moore, Herb Swan
+* with significant contributions from:
+  Jens Lippmann, Marek Rouchal, Martin Wilck and others -->
+
+
+<title>Peer-to-Peer Communication Across Network Address Translators</title>
+<meta name="description" content="Peer-to-Peer Communication Across Network Address Translators">
+<meta name="keywords" content="nat">
+<meta name="resource-type" content="document">
+<meta name="distribution" content="global">
+
+<meta name="Generator" content="LaTeX2HTML v2002-2-1">
+<meta http-equiv="Content-Style-Type" content="text/css">
+
+<link rel="STYLESHEET" href="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/nat.css">
+
+</head><body>
+
+<center>
+<table bgcolor="black" cellpadding="4" cellspacing="1">
+<tbody><tr><td bgcolor="white">
+<font color="black">
+<a href="http://www.brynosaurus.com/"><font color="blue">Bryan's Home Page</font></a> -
+<a href="http://www.brynosaurus.com/work.html"><font color="blue">Research</font></a> -
+<a href="http://www.brynosaurus.com/pub.html"><font color="blue">Publications</font></a> -
+<a href="http://www.brynosaurus.com/draft.html"><font color="blue">Scribblings</font></a> -
+<a href="http://www.brynosaurus.com/album/index.html"><font color="blue">Photo Album</font></a> -
+<a href="http://www.brynosaurus.com/funny/index.html"><font color="blue">Humor</font></a> -
+<a href="http://www.brynosaurus.com/log/stats.html"><font color="blue">Stats</font></a>
+</font>
+</td></tr></tbody></table>
+</center>
+<p>
+
+
+</p><center>
+<script type="text/javascript"><!--
+google_ad_client = "pub-1779435000745034";
+google_ad_width = 468;
+google_ad_height = 60;
+google_ad_format = "468x60_as";
+google_ad_type = "text_image";
+//2006-10-30: Publications
+google_ad_channel = "3419611877";
+google_color_border = "336699";
+google_color_bg = "FFFFFF";
+google_color_link = "0000FF";
+google_color_text = "000000";
+google_color_url = "008000";
+//--></script>
+<script type="text/javascript" src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/show_ads.js">
+</script><script> window.google_render_ad(); </script><iframe name="google_ads_frame" src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/ads.html" marginwidth="0" marginheight="0" vspace="0" hspace="0" allowtransparency="true" frameborder="0" height="60" scrolling="no" width="468"></iframe>
+</center>
+<p>
+
+
+</p><hr>
+
+<h1 align="center">Peer-to-Peer Communication Across Network Address Translators</h1><div>
+
+<p align="center"><strong>Bryan Ford</strong><br>
+<i>Massachusetts Institute of Technology</i><br>
+<tt>baford</tt> (at) <tt>mit.edu</tt></p>
+
+
+<p align="center"><strong>Pyda Srisuresh</strong><br>
+<i>Caymas Systems, Inc.</i><br>
+<tt>srisuresh</tt> (at) <tt>yahoo.com</tt></p>
+
+
+<p align="center"><strong>Dan Kegel</strong><br>
+<tt>dank</tt> (at) <tt>kegel.com</tt></p>
+</div>
+
+<p>
+</p><blockquote>
+<em>J'fais des trous, des petits trous<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img1.png" alt="$\dots$" height="14" width="23" align="bottom" border="0"> 
+<br>toujours des petits trous</em> 
+<br>&nbsp;&nbsp;&nbsp;&nbsp; - S. Gainsbourg</blockquote>
+
+<p>
+
+</p><h3><a href="http://www.brynosaurus.com/pub/net/p2pnat-abs.html">Abstract:</a></h3>
+<div>
+Network Address Translation (NAT)
+causes well-known difficulties
+for peer-to-peer (P2P) communication,
+since the peers involved may not be reachable
+at any globally valid IP address.
+Several NAT traversal techniques are known,
+but their documentation is slim,
+and data about their robustness or relative merits is slimmer.
+This paper documents and analyzes
+one of the simplest but most robust and practical
+NAT traversal techniques,
+commonly known as “hole punching.”
+Hole punching is moderately well-understood for UDP communication,
+but we show how it can be reliably used 
+to set up peer-to-peer TCP streams as well.
+After gathering data on the reliability of this technique
+on a wide variety of deployed NATs,
+we find that about 82% of the NATs tested support hole punching for UDP,
+and about 64% support hole punching for TCP streams.
+As NAT vendors become increasingly conscious of
+the needs of important P2P applications
+such as Voice over IP and online gaming protocols,
+support for hole punching is likely to increase in the future.
+</div>
+<p>
+
+</p><h1><a name="SECTION00010000000000000000"></a>
+<a name="sec-intro"></a>
+1 Introduction
+</h1>
+
+<p>
+The combined pressures of tremendous growth
+and massive security challenges
+have forced the Internet to evolve
+in ways that make life difficult for many applications.
+The Internet's original uniform address architecture,
+in which every node has a globally unique IP address
+and can communicate directly with every other node,
+has been replaced with a new <em>de facto</em> Internet address architecture,
+consisting of a global address realm
+and many private address realms
+interconnected by Network Address Translators (NAT).
+In this new address architecture,
+illustrated in Figure&nbsp;<a href="#fig-twicenat">1</a>,
+only nodes in the “main,” global address realm
+can be easily contacted from anywhere in the network,
+because only they have unique, globally routable IP addresses.
+Nodes on private networks
+can connect to other nodes on the same private network,
+and they can usually open TCP or UDP connections
+to “well-known” nodes in the global address realm.
+NATs on the path
+allocate temporary public endpoints for outgoing connections,
+and translate the addresses and port numbers
+in packets comprising those sessions,
+while generally blocking all incoming traffic
+unless otherwise specifically configured.
+
+</p><p>
+
+</p><div align="center"><a name="fig-twicenat"></a><a name="45"></a>
+<table>
+<caption align="bottom"><strong>Figure 1:</strong>
+Public and private IP address domains</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img2.png" alt="\begin{figure}\centerline{\epsfig{file=twicenat.eps, scale=0.40}}\end{figure}" height="410" width="369" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+The Internet's new <em>de facto</em> address architecture
+is suitable for client/server communication
+in the typical case when the client is on a private network
+and the server is in the global address realm.
+The architecture makes it difficult for two nodes
+on <em>different</em> private networks to contact each other directly,
+however,
+which is often important
+to the “peer-to-peer” communication protocols
+used in applications such as teleconferencing and online gaming.
+We clearly need a way to make such protocols
+function smoothly in the presence of NAT.
+
+</p><p>
+One of the most effective methods
+of establishing peer-to-peer communication
+between hosts on different private networks
+is known as “hole punching.”
+This technique
+is widely used already in UDP-based applications,
+but essentially the same technique also works for TCP.
+Contrary to what its name may suggest,
+hole punching does not compromise the security of a private network.
+Instead,
+hole punching enables applications to function
+<em>within</em> the the default security policy of most NATs,
+effectively signaling to NATs on the path
+that peer-to-peer communication sessions
+are “solicited”
+and thus should be accepted.
+This paper documents hole punching for both UDP and TCP,
+and details the crucial aspects of both application and NAT behavior
+that make hole punching work.
+
+</p><p>
+Unfortunately,
+no traversal technique works with all existing NATs,
+because NAT behavior is not standardized.
+This paper presents some experimental results
+evaluating hole punching support in current NATs.
+Our data is derived from results submitted by users throughout the Internet
+by running our “NAT Check” tool
+over a wide variety of NATs by different vendors.
+While the data points were gathered from a “self-selecting” user community
+and may not be representative
+of the true distribution of NAT implementations deployed on the Internet,
+the results are nevertheless generally encouraging.
+
+</p><p>
+While evaluating basic hole punching,
+we also point out variations that can make hole punching work
+on a wider variety of existing NATs
+at the cost of greater complexity.
+Our primary focus, however,
+is on developing the <em>simplest</em> hole punching technique
+that works cleanly and robustly
+in the presence of “well-behaved” NATs
+in any reasonable network topology.
+We deliberately avoid excessively clever tricks
+that may increase compatibility
+with some existing “broken” NATs in the short term,
+but which only work some of the time
+and may cause additional unpredictability and network brittleness
+in the long term.
+
+</p><p>
+
+</p><p>
+Although the larger address space of IPv6&nbsp;[<a href="#rfc2460">3</a>]
+may eventually reduce the need for NAT,
+in the short term IPv6
+is <em>increasing</em> the demand for NAT,
+because NAT itself provides the easiest way to achieve interoperability
+between IPv4 and IPv6 address domains&nbsp;[<a href="#rfc2766">24</a>].
+Further,
+the anonymity and inaccessibility of hosts on private networks
+has widely perceived security and privacy benefits.
+Firewalls are unlikely to go away even when there are enough IP addresses:
+IPv6 firewalls
+will still commonly block unsolicited incoming traffic by default,
+making hole punching useful even to IPv6 applications.
+
+</p><p>
+The rest of this paper is organized as follows.
+Section&nbsp;<a href="#sec-trav">2</a>
+introduces basic terminology and NAT traversal concepts.
+Section&nbsp;<a href="#sec-udp">3</a>
+details hole punching for UDP,
+and Section&nbsp;<a href="#sec-tcp">4</a>
+introduces hole punching for TCP.
+Section&nbsp;<a href="#sec-good">5</a>
+summarizes important properties a NAT must have
+in order to enable hole punching.
+Section&nbsp;<a href="#sec-eval">6</a>
+presents our experimental results
+on hole punching support in popular NATs,
+Section&nbsp;<a href="#sec-related">7</a> discusses related work,
+and Section&nbsp;<a href="#sec-conc">8</a> concludes.
+
+</p><p>
+
+</p><h1><a name="SECTION00020000000000000000"></a>
+<a name="sec-trav"></a>
+2 General Concepts
+</h1>
+
+<p>
+This section introduces basic NAT terminology
+used throughout the paper,
+and then outlines general NAT traversal techniques
+that apply equally to TCP and UDP.
+
+</p><p>
+
+</p><h2><a name="SECTION00021000000000000000">
+2.1 NAT Terminology</a>
+</h2>
+
+<p>
+This paper adopts the NAT terminology and taxonomy
+defined in RFC 2663&nbsp;[<a href="#rfc2663">21</a>],
+as well as additional terms defined more recently in RFC 3489&nbsp;[<a href="#rfc3489">19</a>].
+
+</p><p>
+Of particular importance is the notion of session.
+A <em>session endpoint</em> for TCP or UDP
+is an (IP address, port number) pair,
+and a particular <em>session</em> is uniquely identified by
+its two session endpoints.
+From the perspective of one of the hosts involved,
+a session is effectively identified by the 4-tuple
+(local IP, local port, remote IP, remote port).
+The <em>direction</em> of a session
+is normally the flow direction of the packet
+that initiates the session:
+the initial SYN packet for TCP,
+or the first user datagram for UDP.
+
+</p><p>
+Of the various flavors of NAT,
+the most common type is <em>traditional</em> or <em>outbound</em> NAT,
+which provides an asymmetric bridge
+between a private network and a public network.
+Outbound NAT by default allows only outbound sessions to traverse the NAT:
+incoming packets are dropped unless the NAT identifies them
+as being part of an existing session
+initiated from within the private network.
+Outbound NAT conflicts with peer-to-peer protocols
+because when both peers desiring to communicate are “behind”
+(on the private network side of) two different NATs,
+whichever peer tries to initiate a session,
+the other peer's NAT rejects it.
+NAT traversal entails
+making P2P sessions look like “outbound” sessions
+to <em>both</em> NATs.
+
+</p><p>
+Outbound NAT has two sub-varieties:
+<em>Basic NAT</em>, which only translates IP addresses,
+and <em>Network Address/Port Translation</em> (NAPT),
+which translates entire session endpoints.
+NAPT, the more general variety,
+has also become the most common
+because it enables the hosts on a private network
+to share the use of a <em>single</em> public IP address.
+Throughout this paper we assume NAPT,
+though the principles and techniques we discuss
+apply equally well (if sometimes trivially) to Basic NAT.
+
+</p><p>
+
+</p><h2><a name="SECTION00022000000000000000">
+2.2 Relaying</a>
+</h2>
+
+<p>
+The most reliable--but least efficient--method
+of P2P communication across NAT
+is simply to make the communication
+look to the network like standard client/server communication,
+through relaying.
+Suppose two client
+hosts <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">
+have each initiated TCP or UDP 
+connections to a well-known server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+at <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">'s global IP address 18.181.0.31 and port number 1234.
+As shown in Figure&nbsp;<a href="#fig-relay">2</a>,
+the clients reside on separate private networks, and
+their respective NATs prevent either client from directly
+initiating a connection to the other.
+Instead of attempting a direct connection, the two clients can simply
+use the server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> to relay messages between them.  For example, to
+send a message to client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">, client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> simply sends the message to
+server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> along its already-established client/server connection, and
+server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> forwards the message on to client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> using its existing
+client/server connection with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+
+</p><p>
+
+</p><div align="center"><a name="fig-relay"></a><a name="119"></a>
+<table>
+<caption align="bottom"><strong>Figure 2:</strong>
+NAT Traversal by Relaying</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img6.png" alt="\begin{figure}\centerline{\epsfig{file=relay.eps, scale=0.40}}\end{figure}" height="317" width="351" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+Relaying always works
+as long as both clients can connect to the server.
+Its disadvantages are that
+it consumes the server's processing power and network bandwidth,
+and communication latency between the peering clients
+is likely increased even if the server is well-connected.
+Nevertheless,
+since there is no more efficient technique
+that works reliably on all existing NATs,
+relaying is a useful fall-back strategy
+if maximum robustness is desired.
+The TURN protocol&nbsp;[<a href="#rosenberg03traversal">18</a>]
+defines a method of implementing relaying
+in a relatively secure fashion.
+
+</p><p>
+
+</p><h2><a name="SECTION00023000000000000000">
+2.3 Connection Reversal</a>
+</h2>
+
+<p>
+Some P2P applications use
+a straightforward but limited technique,
+known as <em>connection reversal</em>,
+to enable communication
+when both hosts have connections to a well-known rendezvous server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">
+and only one of the peers is behind a NAT,
+as shown in Figure&nbsp;<a href="#fig-reversal">3</a>.
+If <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> wants to initiate a connection to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+then a direct connection attempt works automatically,
+because <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> is not behind a NAT
+and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s NAT interprets the connection as an outgoing session.
+If <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> wants to initiate a connection to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">, however,
+any direct connection attempt to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> is blocked by <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s NAT.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> can instead relay a connection request to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">
+through a well-known server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+asking <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> to attempt a “reverse” connection back to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+Despite the obvious limitations of this technique,
+the central idea of using a well-known rendezvous server
+as an intermediary to help set up direct peer-to-peer connections
+is fundamental to the more general hole punching techniques
+described next.
+
+</p><p>
+
+</p><div align="center"><a name="fig-reversal"></a><a name="126"></a>
+<table>
+<caption align="bottom"><strong>Figure 3:</strong>
+NAT Traversal by Connection Reversal</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img7.png" alt="\begin{figure}\centerline{\epsfig{file=reversal.eps, scale=0.40}}\end{figure}" height="317" width="284" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+
+</p><h1><a name="SECTION00030000000000000000"></a>
+<a name="sec-udp"></a>
+3 UDP Hole Punching
+</h1>
+
+<p>
+UDP hole punching enables two clients to set up
+a direct peer-to-peer UDP session
+with the help of a well-known rendezvous server,
+even if the clients are both behind NATs.
+This technique was mentioned
+in section 5.1 of RFC 3027&nbsp;[<a href="#rfc3027">10</a>],
+documented more thoroughly elsewhere on the Web&nbsp;[<a href="#kegel99nat">13</a>],
+and used in recent
+experimental Internet protocols&nbsp;[<a href="#rosenberg03ice">17</a>,<a href="#huitema04teredo">11</a>].
+Various proprietary protocols,
+such as those for on-line gaming,
+also use UDP hole punching.
+
+</p><p>
+
+</p><h2><a name="SECTION00031000000000000000">
+3.1 The Rendezvous Server</a>
+</h2>
+
+<p>
+Hole punching assumes that the two clients,
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+already have active UDP sessions with a rendezvous server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">.
+When a client registers with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+the server records <em>two</em> endpoints for that client:
+the (IP address, UDP port) pair
+that the client <em>believes</em> itself to be using to talk with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+and the (IP address, UDP port) pair
+that the server <em>observes</em> the client to be using to talk with it.
+We refer to the first pair as the client's <em>private</em> endpoint
+and the second as the client's <em>public</em> endpoint.
+The server might
+obtain the client's private endpoint from the client itself
+in a field in the body of the client's registration message,
+and obtain the client's public endpoint
+from the source IP address and source UDP port fields
+in the IP and UDP headers of that registration message.
+If the client is <em>not</em> behind a NAT,
+then its private and public endpoints should be identical.
+
+</p><p>
+A few poorly behaved NATs are known to scan the body of UDP datagrams
+for 4-byte fields that look like IP addresses,
+and translate them as they would the IP address fields
+in the IP header.
+To be robust against such behavior,
+applications may wish to obfuscate IP addresses in messages bodies slightly,
+for example by transmitting the one's complement of the IP address
+instead of the IP address itself.
+Of course, if the application is encrypting its messages,
+then this behavior is not likely to be a problem.
+
+</p><p>
+
+</p><h2><a name="SECTION00032000000000000000">
+3.2 Establishing Peer-to-Peer Sessions</a>
+</h2>
+
+<p>
+Suppose client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> wants to establish a UDP
+session directly with client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+Hole punching proceeds as follows:
+
+</p><p>
+
+</p><ol>
+<li><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> initially does not know how to reach <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+	so <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> asks <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">
+	for help establishing a UDP session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+
+<p>
+
+</p></li><li><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> replies to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> with a message
+	containing <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public <em>and</em> private endpoints.
+	At the same time,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> uses its UDP session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">
+	to send <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> a connection request message
+	containing <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public and private endpoints.
+	Once these messages are received,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> know each other's public and private endpoints.
+
+<p>
+
+</p></li><li>When <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> receives <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public and private endpoints from <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> starts sending UDP packets to
+	<em>both</em> of these endpoints,
+	and subsequently “locks in” whichever endpoint
+	first elicits a valid response from <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+	Similarly, when <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> receives <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public and private endpoints
+	in the forwarded connection request,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> starts sending UDP packets to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">
+	at each of <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s known endpoints,
+	locking in the first endpoint that works.
+	The order and timing of these messages are not critical
+	as long as they are asynchronous.
+</li>
+</ol>
+
+<p>
+We now consider
+how UDP hole punching handles
+each of three specific network scenarios.
+In the first situation,
+representing the “easy” case,
+the two clients actually reside behind the same NAT,
+on one private network.
+In the second,
+most common case,
+the clients reside behind different NATs.
+In the third scenario,
+the clients each reside behind <em>two</em> levels of NAT:
+a common “first-level” NAT
+deployed by an ISP for example,
+and distinct “second-level” NATs
+such as consumer NAT routers for home networks.
+
+</p><p>
+It is in general difficult or impossible for the application itself
+to determine the exact physical layout of the network,
+and thus which of these scenarios (or the many other possible ones)
+actually applies at a given time.
+Protocols such as STUN&nbsp;[<a href="#rfc3489">19</a>]
+can provide some information about the NATs present on a communication path,
+but this information may not always be complete or reliable,
+especially when multiple levels of NAT are involved.
+Nevertheless,
+hole punching works automatically in all of these scenarios
+<em>without</em> the application having to know
+the specific network organization,
+as long as the NATs involved behave in a reasonable fashion.
+(“Reasonable” behavior for NATs will be described
+later in Section&nbsp;<a href="#sec-good">5</a>.)
+
+</p><p>
+
+</p><h2><a name="SECTION00033000000000000000">
+3.3 Peers Behind a Common NAT</a>
+</h2>
+
+<p>
+First consider the simple scenario in which the two clients
+(probably unknowingly) happen to reside behind the same NAT,
+and are therefore located in the same private IP address realm,
+as shown in Figure&nbsp;<a href="#fig-samenat">4</a>. 
+Client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> has established a UDP session with server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">, to which the
+common NAT has assigned its own public port number 62000.
+Client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> has similarly established a session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+to which the NAT has assigned public port number 62005.
+
+</p><p>
+
+</p><div align="center"><a name="fig-samenat"></a><a name="251"></a>
+<table>
+<caption align="bottom"><strong>Figure 4:</strong>
+UDP Hole Punching, Peers Behind a Common NAT</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img8.png" alt="\begin{figure*}\centerline{\epsfig{file=samenat.eps, scale=0.34}}\end{figure*}" height="375" width="926" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+Suppose that client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> uses the hole punching technique outlined above
+to establish a UDP session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+using server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> as an introducer.
+Client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> sends <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> a message requesting a connection to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> responds to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public and private endpoints,
+and also forwards <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public and private endpoints to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+Both clients then attempt to send UDP datagrams to each other
+directly at each of these endpoints.
+The messages directed to the public endpoints
+may or may not reach their destination,
+depending on whether or not the NAT supports hairpin translation
+as described below in Section&nbsp;<a href="#sec-hairpin">3.5</a>.
+The messages directed at the private endpoints
+<em>do</em> reach their destinations, however,
+and since this direct route through the private network
+is likely to be faster than an indirect route through the NAT anyway,
+the clients are most likely to select the private endpoints
+for subsequent regular communication.
+
+</p><p>
+By assuming that NATs support hairpin translation,
+the application might dispense with the complexity
+of trying private as well as public endpoints,
+at the cost of making local communication behind a common NAT
+unnecessarily pass through the NAT.
+As our results in Section&nbsp;<a href="#sec-eval">6</a> show, however,
+hairpin translation is still much less common among existing NATs
+than are other “P2P-friendly” NAT behaviors.
+For now, therefore,
+applications may benefit substantially
+by using both public and private endpoints.
+
+</p><p>
+
+</p><h2><a name="SECTION00034000000000000000">
+3.4 Peers Behind Different NATs</a>
+</h2>
+
+<p>
+Suppose clients <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> have private IP addresses
+behind different NATs,
+as shown in Figure&nbsp;<a href="#fig-diffnat">5</a>.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> have each initiated UDP communication
+sessions from their local port 4321
+to port 1234 on server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">.
+In handling these outbound sessions,
+NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> has assigned port 62000 at its own public IP address, 155.99.25.11,
+for the use of <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+and NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> has assigned port 31000 at its IP address, 138.76.29.7,
+to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">.
+
+</p><p>
+
+</p><div align="center"><a name="fig-diffnat"></a><a name="256"></a>
+<table>
+<caption align="bottom"><strong>Figure 5:</strong>
+UDP Hole Punching, Peers Behind Different NATs</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img9.png" alt="\begin{figure*}\centerline{\epsfig{file=diffnat.eps, scale=0.34}}\end{figure*}" height="375" width="992" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+In <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s registration message to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> reports its private endpoint to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> as 10.0.0.1:4321,
+where 10.0.0.1 is <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s IP address on its own private network.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> records <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s reported private endpoint,
+along with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public endpoint as observed by <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> itself.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public endpoint in this case is 155.99.25.11:62000,
+the temporary endpoint assigned to the session by the NAT.
+Similarly, when client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> registers,
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> records <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s private endpoint as 10.1.1.3:4321
+and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint as 138.76.29.7:31000.
+
+</p><p>
+Now client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> follows the hole punching procedure described above
+to establish a UDP communication session directly with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+First, <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> sends a request message to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">
+asking for help connecting with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+In response, <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> sends <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public and private endpoints to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">,
+and sends <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public and private endpoints to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> each start trying to send UDP datagrams
+directly to each of these endpoints.
+
+</p><p>
+Since <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> are on different private networks
+and their respective private IP addresses are not globally routable,
+the messages sent to these endpoints
+will reach either the wrong host or no host at all.
+Because many NATs also act as DHCP servers,
+handing out IP addresses in a fairly deterministic way
+from a private address pool usually determined by the NAT vendor by default,
+it is quite likely in practice
+that <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s messages directed at <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s private endpoint
+will reach <em>some</em> (incorrect) host on <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s private network
+that happens to have the same private IP address as <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> does.
+Applications must therefore authenticate all messages
+in some way to filter out such stray traffic robustly.
+The messages might include application-specific names or cryptographic tokens,
+for example,
+or at least a random nonce pre-arranged through <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">.
+
+</p><p>
+Now consider <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s first message sent to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint,
+as shown in Figure&nbsp;<a href="#fig-diffnat">5</a>.
+As this outbound message passes through <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s NAT,
+this NAT notices that this is the first UDP packet in a new outgoing session.
+The new session's source endpoint (10.0.0.1:4321)
+is the same as that of the existing session between <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+but its destination endpoint is different.
+If NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> is well-behaved,
+it preserves the identity of <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s private endpoint,
+consistently translating
+<em>all</em> outbound sessions
+from private source endpoint 10.0.0.1:4321
+to the corresponding public source endpoint 155.99.25.11:62000.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s first outgoing message to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint
+thus, in effect,
+“punches a hole” in <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s NAT
+for a new UDP session
+identified by the endpoints
+(10.0.0.1:4321, 138.76.29.7:31000) on <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s private network,
+and by the endpoints
+(155.99.25.11:62000, 138.76.29.7:31000) on the main Internet.
+
+</p><p>
+If <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s message to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint
+reaches <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s NAT before <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s first message to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">
+has crossed <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s own NAT,
+then <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s NAT may interpret <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s inbound message
+as unsolicited incoming traffic and drop it.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s first message to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public address, however,
+similarly opens a hole in <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s NAT,
+for a new UDP session
+identified by the endpoints
+(10.1.1.3:4321, 155.99.25.11:62000) on <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s private network,
+and by the endpoints
+(138.76.29.7:31000, 155.99.25.11:62000) on the Internet.
+Once the first messages from <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> have crossed their respective NATs,
+holes are open in each direction
+and UDP communication can proceed normally.
+Once the clients have verified that the public endpoints work,
+they can stop sending messages to the alternative private endpoints.
+
+</p><p>
+
+</p><h2><a name="SECTION00035000000000000000"></a>
+<a name="sec-hairpin"></a>
+3.5 Peers Behind Multiple Levels of NAT
+</h2>
+
+<p>
+In some topologies involving multiple NAT devices,
+two clients cannot establish an “optimal” P2P route between
+them without specific knowledge of the topology.
+Consider a final scenario,
+depicted in Figure&nbsp;<a href="#fig-multinat">6</a>.
+Suppose NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0"> is a large industrial NAT deployed by an internet
+service provider (ISP) to multiplex many customers onto a few public
+IP addresses, and NATs <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> are small consumer NAT routers
+deployed independently by two of the ISP's customers to multiplex
+their private home networks onto their respective ISP-provided IP
+addresses.  Only server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> and NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0"> have globally routable IP
+addresses; the “public” IP addresses used by NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> are
+actually private to the ISP's address realm, while client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s and
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s addresses in turn are private to the addressing realms of NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">
+and NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">, respectively.
+Each client initiates an outgoing connection to server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> as before,
+causing NATs <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> each to create a single
+public/private translation,
+and causing NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0"> to establish a public/private translation
+for each session.
+
+</p><p>
+
+</p><div align="center"><a name="fig-multinat"></a><a name="261"></a>
+<table>
+<caption align="bottom"><strong>Figure 6:</strong>
+UDP Hole Punching, Peers Behind Multiple Levels of NAT</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img10.png" alt="\begin{figure*}\centerline{\epsfig{file=multinat.eps, scale=0.34}}\end{figure*}" height="501" width="992" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+Now suppose <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> attempt to establish
+a direct peer-to-peer UDP connection
+via hole punching.
+The optimal routing strategy would be for client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> to
+send messages to client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s “semi-public” endpoint at NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+10.0.1.2:55000 in the ISP's addressing realm,
+and for client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> to send messages
+to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s “semi-public” endpoint at NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+namely 10.0.1.1:45000.
+Unfortunately, <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> have no way to learn these addresses,
+because server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> only sees the truly global public endpoints of the clients,
+155.99.25.11:62000 and 155.99.25.11:62005 respectively.
+Even if <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> had some way to learn these addresses,
+there is still no guarantee that they would be usable,
+because the address assignments in the ISP's private address realm
+might conflict with unrelated address assignments
+in the clients' private realms.
+(NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s IP address in NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0">'s realm
+might just as easily have been 10.1.1.3, for example,
+the same as client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s private address in NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s realm.)
+
+</p><p>
+The clients
+therefore have no choice
+but to use their global public addresses as
+seen by <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> for their P2P communication,
+and rely on NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0"> providing <em>hairpin</em> or <em>loopback</em> translation.
+When <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> sends a UDP datagram to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s global endpoint,
+155.99.25.11:62005,
+NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> first translates the datagram's source endpoint
+from 10.0.0.1:4321 to 10.0.1.1:45000.
+The datagram now reaches NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0">,
+which recognizes that the datagram's destination address
+is one of NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0">'s own translated <em>public</em> endpoints.
+If NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0"> is well-behaved,
+it then translates <em>both</em>
+the source and destination addresses in the datagram
+and “loops” the datagram back onto the private network,
+now with a source endpoint of 155.99.25.11:62000
+and a destination endpoint of 10.0.1.2:55000.
+NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> finally translates the datagram's destination address
+as the datagram enters <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s private network,
+and the datagram reaches <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+The path back to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> works similarly.
+Many NATs do not yet support hairpin translation,
+but it is becoming more common
+as NAT vendors become aware of this issue.
+
+</p><p>
+
+</p><p>
+
+</p><h2><a name="SECTION00036000000000000000">
+3.6 UDP Idle Timeouts</a>
+</h2>
+
+<p>
+Since the UDP transport protocol provides NATs
+with no reliable, application-independent way
+to determine the lifetime of a session crossing the NAT,
+most NATs simply associate an idle timer with UDP translations,
+closing the hole if no traffic has used it for some time period.
+There is unfortunately no standard value for this timer:
+some NATs have timeouts as short as 20 seconds.
+If the application needs to keep an idle UDP session active
+after establishing the session via hole punching,
+the application must send periodic keep-alive packets
+to ensure that the relevant translation state in the NATs
+does not disappear.
+
+</p><p>
+Unfortunately,
+many NATs associate UDP idle timers with individual UDP sessions
+defined by a particular pair of endpoints,
+so sending keep-alives on one session
+will not keep other sessions active
+even if all the sessions originate from
+the same private endpoint.
+Instead of sending keep-alives on many different P2P sessions,
+applications can avoid excessive keep-alive traffic
+by detecting when a UDP session no longer works,
+and re-running the original hole punching procedure again “on demand.”
+
+</p><p>
+
+</p><h1><a name="SECTION00040000000000000000"></a>
+<a name="sec-tcp"></a>
+4 TCP Hole Punching
+</h1>
+
+<p>
+Establishing peer-to-peer TCP connections
+between hosts behind NATs
+is slightly more complex than for UDP,
+but TCP hole punching is remarkably similar
+at the protocol level.
+Since it is not as well-understood,
+it is currently supported by fewer existing NATs.
+When the NATs involved <em>do</em> support it, however,
+TCP hole punching is just as fast and reliable as UDP hole punching.
+Peer-to-peer TCP communication across well-behaved NATs
+may in fact be <em>more</em> robust than UDP communication,
+because unlike UDP,
+the TCP protocol's state machine
+gives NATs on the path a standard way to determine
+the precise lifetime of a particular TCP session.
+
+</p><p>
+
+</p><h2><a name="SECTION00041000000000000000">
+4.1 Sockets and TCP Port Reuse</a>
+</h2>
+
+<p>
+The main practical challenge
+to applications wishing to implement TCP hole punching
+is not a protocol issue
+but an application programming interface (API) issue.
+Because the standard Berkeley sockets API
+was designed around the client/server paradigm,
+the API allows
+a TCP stream socket
+to be used to initiate an outgoing connection via <tt>connect()</tt>,
+or to listen for incoming connections via <tt>listen()</tt> and <tt>accept()</tt>,
+<em>but not both</em>.
+Further,
+TCP sockets usually have a one-to-one correspondence
+to TCP port numbers on the local host:
+after the application binds one socket to a particular local TCP port,
+attempts to bind a second socket to the same TCP port fail.
+
+</p><p>
+For TCP hole punching to work, however,
+we need to use a single local TCP port
+to listen for incoming TCP connections
+and to initiate multiple outgoing TCP connections concurrently.
+Fortunately, all major operating systems
+support a special TCP socket option,
+commonly named <code>SO_REUSEADDR</code>,
+which allows the application to bind multiple sockets
+to the same local endpoint
+as long as this option is set on all of the sockets involved.
+BSD systems have introduced a <code>SO_REUSEPORT</code> option
+that controls port reuse separately from address reuse;
+on such systems <em>both</em> of these options must be set.
+
+</p><p>
+
+</p><h2><a name="SECTION00042000000000000000"></a>
+<a name="sec-tcp-steps"></a>
+4.2 Opening Peer-to-Peer TCP Streams
+</h2>
+
+<p>
+Suppose that client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> wishes to set up a TCP connection with client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+We assume as usual
+that both <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> already have active TCP connections
+with a well-known rendezvous server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">.
+The server records
+each registered client's public and private endpoints,
+just as for UDP.
+At the protocol level,
+TCP hole punching works almost exactly as for UDP:
+
+</p><p>
+
+</p><ol>
+<li>Client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> uses its active TCP session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">
+	to ask <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> for help connecting to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+
+<p>
+
+</p></li><li><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> replies to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public and private TCP endpoints,
+	and at the same time sends <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public and private endpoints to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+
+<p>
+
+</p></li><li>From <em>the same local TCP ports</em>
+	that <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> used to register with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> each asynchronously make outgoing connection attempts
+	to the other's public and private endpoints
+	as reported by <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+	while simultaneously listening for incoming connections
+	on their respective local TCP ports.
+
+<p>
+
+</p></li><li><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> wait for outgoing connection attempts to succeed,
+	and/or for incoming connections to appear.
+	If one of the outgoing connection attempts fails
+	due to a network error
+	such as “connection reset” or “host unreachable,”
+	the host simply re-tries that connection attempt
+	after a short delay (e.g., one second),
+	up to an application-defind maximum timeout period.
+
+<p>
+
+</p></li><li>When a TCP connection is made,
+	the hosts authenticate each other
+	to verify that they connected to the intended host.
+	If authentication fails,
+	the clients close that connection
+	and continue waiting for others to succeed.
+	The clients
+	use the first successfully authenticated TCP stream
+	resulting from this process.
+</li>
+</ol>
+
+<p>
+Unlike with UDP,
+where each client only needs one socket
+to communicate with both <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> and any number of peers simultaneously,
+with TCP each client application must manage several sockets
+bound to a single local TCP port on that client node,
+as shown in Figure&nbsp;<a href="#fig-tcpsocks">7</a>.
+Each client needs a stream socket representing its connection to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+a listen socket on which to accept incoming connections from peers,
+and at least two additional stream sockets
+with which to initiate outgoing connections
+to the other peer's public and private TCP endpoints.
+
+</p><p>
+
+</p><div align="center"><a name="fig-tcpsocks"></a><a name="753"></a>
+<table>
+<caption align="bottom"><strong>Figure 7:</strong>
+Sockets versus Ports for TCP Hole Punching</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img12.png" alt="\begin{figure}\centerline{\epsfig{file=tcpsocks.eps, scale=0.35}}\end{figure}" height="497" width="376" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+Consider the common-case scenario
+in which the clients <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> are behind different NATs,
+as shown in Figure&nbsp;<a href="#fig-diffnat">5</a>,
+and assume that the port numbers shown in the figure
+are now for TCP rather than UDP ports.
+The outgoing connection attempts <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> make
+to each other's private endpoints
+either fail or connect to the wrong host.
+As with UDP,
+it is important that TCP applications authenticate their peer-to-peer sessions,
+due of the likelihood of mistakenly connecting to
+a random host on the local network
+that happens to have the same private IP address
+as the desired host on a remote private network.
+
+</p><p>
+The clients' outgoing connection attempts
+to each other's <em>public</em> endpoints,
+however, cause the respective NATs to open up new “holes”
+enabling direct TCP communication between <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> and <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+If the NATs are well-behaved,
+then a new peer-to-peer TCP stream
+automatically forms between them.
+If <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s first SYN packet to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> reaches <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s NAT
+before <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s first SYN packet to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> reaches <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s NAT, for example,
+then <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s NAT may interpret <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s SYN
+as an unsolicited incoming connection attempt
+and drop it.
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s first SYN packet to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> should subsequently get through,
+however,
+because <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s NAT sees this SYN
+as being part of the outbound session to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">
+that <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s first SYN had already initiated.
+
+</p><p>
+
+</p><h2><a name="SECTION00043000000000000000">
+4.3 Behavior Observed by the Application</a>
+</h2>
+
+<p>
+What the client applications observe to happen with their sockets
+during TCP hole punching
+depends on the timing and the TCP implementations involved.
+Suppose that <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s first outbound SYN packet to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint
+is dropped by NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+but <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s first subsequent SYN packet to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s public endpoint
+gets through to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> before <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s TCP retransmits its SYN.
+Depending on the operating system involved,
+one of two things may happen:
+
+</p><p>
+
+</p><ul>
+<li><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s TCP implementation notices that
+	the session endpoints for the incoming SYN
+	match those of an outbound session <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> was attempting to initiate.
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s TCP stack therefore associates this new session
+	with the socket that the local application on <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">
+	was using to <tt>connect()</tt> to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint.
+	The application's asynchronous <tt>connect()</tt> call succeeds,
+	and nothing happens with the application's listen socket.
+
+<p>
+Since the received SYN packet did not include an ACK
+	for <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s previous outbound SYN,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s TCP replies to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint
+	with a SYN-ACK packet,
+	the SYN part being merely a replay
+	of <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s original outbound SYN,
+	using the same sequence number.
+	Once <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s TCP receives <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s SYN-ACK,
+	it responds with its own ACK for <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s SYN,
+	and the TCP session enters the connected state on both ends.
+
+</p><p>
+
+</p></li><li>Alternatively,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s TCP implementation might instead notice
+	that <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> has an active listen socket on that port
+	waiting for incoming connection attempts.
+	Since <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s SYN looks like an incoming connection attempt,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s TCP creates a <em>new</em> stream socket
+	with which to associate the new TCP session,
+	and hands this new socket to the application
+	via the application's next <tt>accept()</tt> call
+	on its listen socket.
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s TCP then responds to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> with a SYN-ACK as above,
+	and TCP connection setup proceeds as usual
+	for client/server-style connections.
+
+<p>
+Since <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s prior outbound <tt>connect()</tt> attempt to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">
+	used a combination of source and destination endpoints
+	that is now in use by another socket,
+	namely the one just returned to the application via <tt>accept()</tt>,
+	<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s asynchronous <tt>connect()</tt> attempt
+	must fail at some point,
+	typically with an “address in use” error.
+	The application nevertheless has the working peer-to-peer
+	stream socket it needs to communicate with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">,
+	so it ignores this failure.
+
+</p></li></ul>
+
+<p>
+The first behavior above appears to be usual for BSD-based operating systems,
+whereas the second behavior appears more common under Linux and Windows.
+
+</p><p>
+
+</p><h2><a name="SECTION00044000000000000000"></a>
+<a name="sec-tcp-simul"></a>
+4.4 Simultaneous TCP Open
+</h2>
+
+<p>
+Suppose that the timing of the various connection attempts
+during the hole punching process
+works out so that
+the initial outgoing SYN packets from <em>both</em> clients
+traverse their respective local NATs,
+opening new outbound TCP sessions in each NAT,
+before reaching the remote NAT.
+In this “lucky” case,
+the NATs do not reject either of the initial SYN packets,
+and the SYNs cross on the wire between the two NATs.
+In this case,
+the clients observe an event
+known as a <em>simultaneous TCP open</em>:
+each peer's TCP receives a “raw” SYN
+while waiting for a SYN-ACK.
+Each peer's TCP responds with a SYN-ACK,
+whose SYN part essentially “replays” the peer's previous outgoing SYN,
+and whose ACK part acknowledges the SYN received from the other peer.
+
+</p><p>
+What the respective applications observe in this case
+again depends on the behavior of the TCP implementations involved,
+as described in the previous section.
+If <em>both</em> clients implement the second behavior above,
+it may be that
+<em>all</em> of the asynchronous <tt>connect()</tt> calls
+made by the application ultimately fail,
+but the application running on each client
+nevertheless receives a new, working peer-to-peer TCP stream socket
+via <tt>accept()</tt>--as if this TCP stream had magically “created itself” on the wire
+and was merely passively accepted at the endpoints!
+As long as the application does not care
+whether it ultimately receives its peer-to-peer TCP sockets
+via <tt>connect()</tt> or <tt>accept()</tt>,
+the process results in a working stream
+on any TCP implementation
+that properly implements the standard TCP state machine
+specified in RFC 793&nbsp;[<a href="#rfc793">23</a>].
+
+</p><p>
+
+</p><p>
+Each of the alternative network organization scenarios
+discussed in Section&nbsp;<a href="#sec-udp">3</a> for UDP
+works in exactly the same way for TCP.
+For example,
+TCP hole punching works in multi-level NAT scenarios
+such as the one in Figure&nbsp;<a href="#fig-multinat">6</a>
+as long as the NATs involved are well-behaved.
+
+</p><p>
+
+</p><h2><a name="SECTION00045000000000000000"></a>
+<a name="sec-tcp-seq"></a>
+4.5 Sequential Hole Punching
+</h2>
+
+<p>
+In a variant of the above TCP hole punching procedure
+implemented by the NatTrav library&nbsp;[<a href="#eppinger05tcp">4</a>],
+the clients attempt connections to each other
+sequentially rather than in parallel.
+For example:
+(1) <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> informs <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> via <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> of its desire to communicate,
+<em>without</em> simultaneously listening on its local port;
+(2) <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> makes a <tt>connect()</tt> attempt to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">,
+which opens a hole in <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s NAT
+but then fails due to a timeout
+or RST from <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s NAT or a RST from <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> itself;
+(3) <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> closes its connection to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">
+and does a <tt>listen()</tt> on its local port;
+(4) <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> in turn closes its connection with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">,
+signaling <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> to attempt a <tt>connect()</tt> directly to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+
+</p><p>
+This sequential procedure may be particularly useful
+on Windows hosts prior to XP Service Pack 2,
+which did not correctly implement simultaneous TCP open,
+or on sockets APIs
+that do not support the <code>SO_REUSEADDR</code> functionality.
+The sequential procedure is more timing-dependent,
+however,
+and may be slower in the common case
+and less robust in unusual situations.
+In step (2), for example,
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> must allow its “doomed-to-fail” <tt>connect()</tt> attempt
+enough time to ensure that at least one SYN packet
+traverses all NATs on its side of the network.
+Too little delay risks
+a lost SYN derailing the process,
+whereas too much delay increases the total time
+required for hole punching.
+The sequential hole punching procedure also effectively “consumes”
+both clients' connections to the server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+requiring the clients to open fresh connections to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">
+for each new P2P connection to be forged.
+The parallel hole punching procedure,
+in contrast,
+typically completes as soon as
+both clients make their outgoing <tt>connect()</tt> attempts,
+and allows each client to retain and re-use
+a single connection to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0"> indefinitely.
+
+</p><p>
+
+</p><h1><a name="SECTION00050000000000000000"></a>
+<a name="sec-good"></a>
+5 Properties of P2P-Friendly NATs
+</h1>
+
+<p>
+This section describes the key behavioral properties NATs must have
+in order for the hole punching techniques described above to work properly.
+Not all current NAT implementations satisfy these properties,
+but many do,
+and NATs are gradually becoming more “P2P-friendly”
+as NAT vendors recognize the demand for peer-to-peer protocols
+such as voice over IP and on-line gaming.
+
+</p><p>
+This section is not meant to be
+a complete or definitive specification for how NATs “should” behave;
+we provide it merely for information
+about the most commonly observed behaviors
+that enable or break P2P hole punching.
+The IETF has started a new working group, BEHAVE,
+to define official “best current practices” for NAT behavior.
+The BEHAVE group's initial drafts
+include the considerations outlined in this section and others;
+NAT vendors should of course
+follow the IETF working group directly
+as official behavioral standards are formulated.
+
+</p><p>
+
+</p><h2><a name="SECTION00051000000000000000"></a>
+<a name="sec-good-consist"></a>
+5.1 Consistent Endpoint Translation
+</h2>
+
+<p>
+The hole punching techniques described here
+only work automatically
+if the NAT consistently maps a given TCP or UDP source endpoint
+on the private network
+to a <em>single</em> corresponding public endpoint
+controlled by the NAT.
+A NAT that behaves in this way
+is referred to as a <em>cone NAT</em>
+in RFC 3489&nbsp;[<a href="#rfc3489">19</a>] and elsewhere,
+because the NAT “focuses” all sessions 
+originating from a single private endpoint
+through the same public endpoint on the NAT.
+
+</p><p>
+Consider again the scenario in Figure&nbsp;<a href="#fig-diffnat">5</a>, for example.
+When client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> initially contacted the well-known server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> chose to use port 62000
+at its own public IP address, 155.99.25.11,
+as a temporary public endpoint
+to representing <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s private endpoint 10.0.0.1:4321.
+When <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> later attempts to establish a peer-to-peer session with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">
+by sending a message from the same local private endpoint
+to <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">'s public endpoint,
+<img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> depends on NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> preserving the identity of this private endpoint,
+and re-using the existing public endpoint of 155.99.25.11:62000,
+because that is the public endpoint for <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">
+to which <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0"> will be sending its corresponding messages.
+
+</p><p>
+A NAT that is only designed to support client/server protocols
+will not necessarily preserve the identities of private endpoints in this way.
+Such a NAT is a <em>symmetric NAT</em> in RFC 3489 terminology.
+For example,
+after the NAT assigns the public endpoint 155.99.25.11:62000
+to client <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0">'s session with server <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img5.png" alt="$S$" height="15" width="15" align="bottom" border="0">,
+the NAT might assign a different public endpoint,
+such as 155.99.25.11:62001,
+to the P2P session that <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> tries to initiate with <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">.
+In this case,
+the hole punching process fails to provide connectivity,
+because the subsequent incoming messages from <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img4.png" alt="$B$" height="14" width="17" align="bottom" border="0">
+reach NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img3.png" alt="$A$" height="14" width="16" align="bottom" border="0"> at the wrong port number.
+
+</p><p>
+Many symmetric NATs allocate port numbers for successive sessions
+in a fairly predictable way.
+Exploiting this fact,
+variants of hole punching algorithms&nbsp;[<a href="#guha04nutss">9</a>,<a href="#biggadike05natblaster">1</a>]
+can be made to work “much of the time” even over symmetric NATs
+by first probing the NAT's behavior
+using a protocol such as STUN&nbsp;[<a href="#rfc3489">19</a>],
+and using the resulting information
+to “predict” the public port number the NAT
+will assign to a new session.
+Such prediction techniques amount to chasing a moving target, however,
+and many things can go wrong along the way.
+The predicted port number might already be in use
+causing the NAT to jump to another port number,
+for example,
+or another client behind the same NAT
+might initiate an unrelated session at the wrong time
+so as to allocate the predicted port number.
+While port number prediction can be a useful trick
+for achieving maximum compatibility with badly-behaved existing NATs,
+it does not represent a robust long-term solution.
+Since symmetric NAT provides no greater security
+than a cone NAT with per-session traffic filtering,
+symmetric NAT is becoming less common
+as NAT vendors adapt their algorithms to support P2P protocols.
+
+</p><p>
+
+</p><h2><a name="SECTION00052000000000000000"></a>
+<a name="sec-good-tcp"></a>
+5.2 Handling Unsolicited TCP Connections
+</h2>
+
+<p>
+When a NAT receives a SYN packet on its public side
+for what appears to be an unsolicited incoming connection attempt,
+it is important that the NAT just silently drop the SYN packet.
+Some NATs instead actively reject such incoming connections
+by sending back a TCP RST packet or even an ICMP error report,
+which interferes with the TCP hole punching process.
+Such behavior is not necessarily fatal,
+as long as the applications re-try outgoing connection attempts
+as specified in step 4 of the process described in Section&nbsp;<a href="#sec-tcp-steps">4.2</a>,
+but the resulting transient errors
+can make hole punching take longer.
+
+</p><p>
+
+</p><h2><a name="SECTION00053000000000000000">
+5.3 Leaving Payloads Alone</a>
+</h2>
+
+<p>
+A few existing NATs
+are known to scan “blindly” through packet payloads
+for 4-byte values that look like IP addresses,
+and translate them as they would the IP address in the packet header,
+without knowing anything about the application protocol in use.
+This bad behavior fortunately appears to be uncommon,
+and applications can easily protect themselves against it
+by obfuscating IP addresses they send in messages,
+for example by sending the bitwise complement of the desired IP address.
+
+</p><p>
+
+</p><h2><a name="SECTION00054000000000000000"></a>
+<a name="sec-good-hairpin"></a>
+5.4 Hairpin Translation
+</h2>
+
+<p>
+Some multi-level NAT situations
+require hairpin translation support
+in order for either TCP or UDP hole punching to work,
+as described in Section&nbsp;<a href="#sec-hairpin">3.5</a>.
+The scenario shown in Figure&nbsp;<a href="#fig-multinat">6</a>, for example,
+depends on NAT <img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img11.png" alt="$C$" height="14" width="17" align="bottom" border="0"> providing hairpin translation.
+Support for hairpin translation
+is unfortunately rare in current NATs,
+but fortunately so are the network scenarios that require it.
+Multi-level NAT is becoming more common
+as IPv4 address space depletion continues,
+however,
+so support for hairpin translation
+is important in future NAT implementations.
+
+</p><p>
+
+</p><h1><a name="SECTION00060000000000000000"></a>
+<a name="sec-eval"></a>
+6 Evaluation of Existing NATs
+</h1>
+
+<p>
+To evaluate the robustness of the TCP and UDP hole punching techniques
+described in this paper
+on a variety of existing NATs,
+we implemented and distributed a test program called
+NAT Check&nbsp;[<a href="#natcheck">16</a>],
+and solicited data from Internet users about their NATs.
+
+</p><p>
+NAT Check's primary purpose
+is to test NATs
+for the two behavioral properties most crucial
+to reliable UDP and TCP hole punching:
+namely,
+consistent identity-preserving endpoint translation
+(Section&nbsp;<a href="#sec-good-consist">5.1</a>),
+and silently dropping unsolicited incoming TCP SYNs
+instead of rejecting them with RSTs or ICMP errors
+(Section&nbsp;<a href="#sec-good-tcp">5.2</a>).
+In addition,
+NAT Check separately tests
+whether the NAT supports hairpin translation
+(Section&nbsp;<a href="#sec-good-hairpin">5.4</a>),
+and whether the NAT filters unsolicited incoming traffic at all.
+This last property does not affect hole punching,
+but provides a useful indication the NAT's firewall policy.
+
+</p><p>
+NAT Check makes no attempt
+to test every relevant facet of NAT behavior individually:
+a wide variety of subtle behavioral differences are known,
+some of which are difficult
+to test reliably&nbsp;[<a href="#jennings04nat">12</a>].
+Instead, NAT Check merely attempts to answer the question,
+“how commonly can the proposed hole punching techniques
+be expected to work on deployed NATs,
+under typical network conditions?”
+
+</p><p>
+
+</p><h2><a name="SECTION00061000000000000000">
+6.1 Test Method</a>
+</h2>
+
+<p>
+NAT Check consists of a client program
+to be run on a machine behind the NAT to be tested,
+and three well-known servers at different global IP addresses.
+The client cooperates with the three servers
+to check the NAT behavior
+relevant to both TCP and UDP hole punching.
+The client program is small and relatively portable,
+currently running on Windows, Linux, BSD, and Mac OS X.
+The machines hosting the well-known servers all run FreeBSD.
+
+</p><p>
+
+</p><h3><a name="SECTION00061100000000000000">
+6.1.1 UDP Test</a>
+</h3>
+
+<p>
+To test the NAT's behavior for UDP,
+the client opens a socket and binds it to a local UDP port,
+then successively sends “ping”-like requests to servers 1 and 2,
+as shown in Figure&nbsp;<a href="#fig-udptest">8</a>.
+These servers each respond to the client's pings
+with a reply that includes the client's public UDP endpoint:
+the client's own IP address and UDP port number
+as observed by the server.
+If the two servers report the same public endpoint for the client,
+NAT Check assumes that the NAT properly preserves
+the identity of the client's private endpoint,
+satisfying the primary precondition for reliable UDP hole punching.
+
+</p><p>
+
+</p><div align="center"><a name="fig-udptest"></a><a name="1217"></a>
+<table>
+<caption align="bottom"><strong>Figure 8:</strong>
+NAT Check Test Method for UDP</caption>
+<tbody><tr><td><img src="Peer-to-Peer%20Communication%20Across%20Network%20Address%20Translators_files/img13.png" alt="\begin{figure}\centerline{\epsfig{file=udptest.eps, scale=0.40}}\end{figure}" height="339" width="292" border="0"></td></tr>
+</tbody></table>
+</div>
+
+<p>
+When server 2 receives a UDP request from the client,
+besides replying directly to the client
+it also forwards the request to server 3,
+which in turn replies to the client
+from its own IP address.
+If the NAT's firewall properly filters
+“unsolicited” incoming traffic on a per-session basis,
+then the client never sees these replies from server 3,
+even though they are directed at the same public port
+as the replies from servers 1 and 2.
+
+</p><p>
+To test the NAT for hairpin translation support,
+the client simply opens a second UDP socket at a different local port
+and uses it to send messages to the <em>public</em> endpoint
+representing the client's first UDP socket,
+as reported by server 2.
+If these messages reach the client's first private endpoint,
+then the NAT supports hairpin translation.
+
+</p><p>
+
+</p><h3><a name="SECTION00061200000000000000">
+6.1.2 TCP Test</a>
+</h3>
+
+<p>
+The TCP test follows a similar pattern as for UDP.
+The client uses a single local TCP port
+to initiate outbound sessions to servers 1 and 2,
+and checks whether the public endpoints
+reported by servers 1 and 2 are the same,
+the first precondition
+for reliable TCP hole punching.
+
+</p><p>
+The NAT's response to unsolicited incoming connection attempts
+also impacts the speed and reliability of TCP hole punching, however,
+so NAT Check also tests this behavior.
+When server 2 receives the client's request,
+instead of immediately replying to the client,
+it forwards a request to server 3
+and waits for server 3 to respond with a “go-ahead” signal.
+When server 3 receives this forwarded request,
+it attempts to initiate an inbound connection
+to the client's public TCP endpoint.
+Server 3 waits up to five seconds 
+for this connection to succeed or fail,
+and if the connection attempt is still “in progress” after five seconds,
+server 3 responds to server 2 with the “go-ahead” signal
+and continues waiting for up to 20 seconds.
+Once the client finally receives server 2's reply
+(which server 2 delayed waiting for server 3's “go-ahead” signal),
+the client attempts an outbound connection to server 3,
+effectively causing a simultaneous TCP open with server 3.
+
+</p><p>
+What happens during this test
+depends on the NAT's behavior as follows.
+If the NAT properly just drops server 3's “unsolicited” incoming SYN packets,
+then nothing happens on the client's listen socket
+during the five second period
+before server 2 replies to the client.
+When the client finally initiates its own connection to server 3,
+opening a hole through the NAT,
+the attempt succeeds immediately.
+If on the other hand
+the NAT does <em>not</em> drop server 3's unsolicited incoming SYNs
+but allows them through
+(which is fine for hole punching but not ideal for security),
+then the client receives an incoming TCP connection on its listen socket
+before receiving server 2's reply.
+Finally, if the NAT actively rejects server 3's unsolicited incoming SYNs
+by sending back TCP RST packets,
+then server 3 gives up
+and the client's subsequent attempt to connect to server 3 fails.
+
+</p><p>
+To test hairpin translation for TCP,
+the client simply uses a secondary local TCP port
+to attempt a connection to the public endpoint
+corresponding to its primary TCP port,
+in the same way as for UDP.
+
+</p><p>
+
+</p><h2><a name="SECTION00062000000000000000">
+6.2 Test Results</a>
+</h2>
+
+<p>
+The NAT Check data we gathered
+consists of 380 reported data points
+covering a variety of NAT router hardware from 68 vendors,
+as well as the NAT functionality built
+into different versions of eight popular operating systems.
+Only 335 of the total data points include results for UDP hairpin translation,
+and only 286 data points include results for TCP,
+because we implemented these features in later versions of NAT Check
+after we had already started gathering results.
+The data is summarized by NAT vendor in Table&nbsp;<a href="#tab-nat">1</a>;
+the table only individually lists vendors
+for which at least five data points were available.
+The variations in the test results for a given vendor
+can be accounted for by a variety of factors,
+such as different NAT devices or product lines sold by the same vendor,
+different software or firmware versions of the same NAT implementation,
+different configurations,
+and probably occasional NAT Check testing or reporting errors.
+
+</p><p>
+<br></p><p></p>
+<div align="center"><a name="1270"></a>
+<table>
+<caption><strong>Table 1:</strong>
+User Reports of NAT Support for UDP and TCP Hole Punching</caption>
+<tbody><tr><td><div align="center">
+<table align="center" border="1" cellpadding="3">
+<tbody><tr><td align="left">&nbsp;</td>
+<td align="left">&nbsp;</td>
+<td colspan="4" align="center"><b>UDP</b></td>
+<td colspan="4" align="center"><b>TCP</b></td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">&nbsp;</td>
+<td colspan="2" align="center">Hole</td>
+<td colspan="2" align="center">&nbsp;</td>
+<td colspan="2" align="center">Hole</td>
+<td colspan="2" align="center">&nbsp;</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">&nbsp;</td>
+<td colspan="2" align="center">Punching</td>
+<td colspan="2" align="center">Hairpin</td>
+<td colspan="2" align="center">Punching</td>
+<td colspan="2" align="center">Hairpin</td>
+</tr>
+<tr><td colspan="2" align="left"><b>NAT Hardware</b></td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">Linksys</td>
+<td align="right">45/46</td>
+<td align="right">(98%)</td>
+<td align="right">5/42</td>
+<td align="right">(12%)</td>
+<td align="right">33/38</td>
+<td align="right">(87%)</td>
+<td align="right">3/38</td>
+<td align="right">(8%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">Netgear</td>
+<td align="right">31/37</td>
+<td align="right">(84%)</td>
+<td align="right">3/35</td>
+<td align="right">(9%)</td>
+<td align="right">19/30</td>
+<td align="right">(63%)</td>
+<td align="right">0/30</td>
+<td align="right">(0%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">D-Link</td>
+<td align="right">16/21</td>
+<td align="right">(76%)</td>
+<td align="right">11/21</td>
+<td align="right">(52%)</td>
+<td align="right">9/19</td>
+<td align="right">(47%)</td>
+<td align="right">2/19</td>
+<td align="right">(11%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">Draytek</td>
+<td align="right">2/17</td>
+<td align="right">(12%)</td>
+<td align="right">3/12</td>
+<td align="right">(25%)</td>
+<td align="right">2/7</td>
+<td align="right">(29%)</td>
+<td align="right">0/7</td>
+<td align="right">(0%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">Belkin</td>
+<td align="right">14/14</td>
+<td align="right">(100%)</td>
+<td align="right">1/14</td>
+<td align="right">(7%)</td>
+<td align="right">11/11</td>
+<td align="right">(100%)</td>
+<td align="right">0/11</td>
+<td align="right">(0%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">Cisco</td>
+<td align="right">12/12</td>
+<td align="right">(100%)</td>
+<td align="right">3/9</td>
+<td align="right">(33%)</td>
+<td align="right">6/7</td>
+<td align="right">(86%)</td>
+<td align="right">2/7</td>
+<td align="right">(29%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">SMC</td>
+<td align="right">12/12</td>
+<td align="right">(100%)</td>
+<td align="right">3/10</td>
+<td align="right">(30%)</td>
+<td align="right">8/9</td>
+<td align="right">(89%)</td>
+<td align="right">2/9</td>
+<td align="right">(22%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">ZyXEL</td>
+<td align="right">7/9</td>
+<td align="right">(78%)</td>
+<td align="right">1/8</td>
+<td align="right">(13%)</td>
+<td align="right">0/7</td>
+<td align="right">(0%)</td>
+<td align="right">0/7</td>
+<td align="right">(0%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">3Com</td>
+<td align="right">7/7</td>
+<td align="right">(100%)</td>
+<td align="right">1/7</td>
+<td align="right">(14%)</td>
+<td align="right">5/6</td>
+<td align="right">(83%)</td>
+<td align="right">0/6</td>
+<td align="right">(0%)</td>
+</tr>
+<tr><td colspan="2" align="left"><b>OS-based NAT</b></td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+<td align="right">&nbsp;</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">Windows</td>
+<td align="right">31/33</td>
+<td align="right">(94%)</td>
+<td align="right">11/32</td>
+<td align="right">(34%)</td>
+<td align="right">16/31</td>
+<td align="right">(52%)</td>
+<td align="right">28/31</td>
+<td align="right">(90%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">Linux</td>
+<td align="right">26/32</td>
+<td align="right">(81%)</td>
+<td align="right">3/25</td>
+<td align="right">(12%)</td>
+<td align="right">16/24</td>
+<td align="right">(67%)</td>
+<td align="right">2/24</td>
+<td align="right">(8%)</td>
+</tr>
+<tr><td align="left">&nbsp;</td>
+<td align="left">FreeBSD</td>
+<td align="right">7/9</td>
+<td align="right">(78%)</td>
+<td align="right">3/6</td>
+<td align="right">(50%)</td>
+<td align="right">2/3</td>
+<td align="right">(67%)</td>
+<td align="right">1/1</td>
+<td align="right">(100%)</td>
+</tr>
+<tr><td colspan="2" align="left"><b>All Vendors</b></td>
+<td align="right">310/380</td>
+<td align="right">(82%)</td>
+<td align="right">80/335</td>
+<td align="right">(24%)</td>
+<td align="right">184/286</td>
+<td align="right">(64%)</td>
+<td align="right">37/286</td>
+<td align="right">(13%)</td>
+</tr>
+</tbody></table>
+</div>
+
+<a name="tab-nat"></a></td></tr>
+</tbody></table>
+</div><p></p><br>
+
+<p>
+Out of the 380 reported data points for UDP,
+in 310 cases (82%)
+the NAT consistently translated the client's private endpoint,
+indicating basic compatibility with UDP hole punching.
+Support for hairpin translation is much less common, however:
+of the 335 data points that include UDP hairpin translation results,
+only 80 (24%) show hairpin translation support.
+
+</p><p>
+Out of the 286 data points for TCP,
+184 (64%) show compatibility with TCP hole punching:
+the NAT consistently translates the client's private TCP endpoint,
+and does not send back RST packets
+in response to unsolicited incoming connection attempts.
+Hairpin translation support is again much less common:
+only 37 (13%) of the reports
+showed hairpin support for TCP.
+
+</p><p>
+Since these reports 
+were generated by a “self-selecting” community of volunteers,
+they do not constitute a random sample
+and thus do not necessarily represent
+the true distribution of the NATs in common use.
+The results are nevertheless encouraging:
+it appears that the majority of commonly-deployed NATs
+already support UDP and TCP hole punching
+at least in single-level NAT scenarios.
+
+</p><p>
+
+</p><p>
+
+</p><h2><a name="SECTION00063000000000000000">
+6.3 Testing Limitations</a>
+</h2>
+
+<p>
+There are a few limitations in NAT Check's current testing protocol
+that may cause misleading results in some cases.
+First, we only learned recently
+that a few NAT implementations blindly
+translate IP addresses they find in unknown application payloads,
+and the NAT Check protocol currently does not protect itself from this behavior
+by obfuscating the IP addresses it transmits.
+
+</p><p>
+Second,
+NAT Check's current hairpin translation checking
+may yield unnecessarily pessimistic results
+because it does not use the full, two-way hole punching procedure
+for this test.
+NAT Check currently assumes that a NAT supporting hairpin translation
+does not filter “incoming” hairpin connections
+arriving from the private network
+in the way it would filter incoming connections
+arriving at the public side of the NAT,
+because such filtering is unnecessary for security.
+We later realized, however,
+that a NAT might simplistically
+treat <em>any</em> traffic directed at the NAT's public ports
+as “untrusted” regardless of its origin.
+We do not yet know which behavior is more common.
+
+</p><p>
+Finally,
+NAT implementations exist
+that consistently translate the client's private endpoint
+as long as <em>only one</em> client behind the NAT
+is using a particular private port number,
+but switch to symmetric NAT or even worse behaviors
+if two or more clients with different IP addresses on the private network
+try to communicate through the NAT from the same private port number.
+NAT Check could only detect this behavior
+by requiring the user to run it on two or more client hosts
+behind the NAT at the same time.
+Doing so would make NAT Check much more difficult to use, however,
+and impossible for users who only have one usable machine behind the NAT.
+Nevertheless, we plan to implement this testing functionality
+as an option in a future version of NAT Check.
+
+</p><p>
+
+</p><h2><a name="SECTION00064000000000000000">
+6.4 Corroboration of Results</a>
+</h2>
+
+<p>
+Despite testing difficulties such as those above,
+our results are generally corroborated
+by those of a large ISP,
+who recently found that of the top three consumer NAT router vendors,
+representing 86% of the NATs observed on their network,
+all three vendors currently produce NATs compatible
+with UDP hole punching&nbsp;[<a href="#uberti04">25</a>].
+Additional independent results
+recently obtained
+using the UDP-oriented STUN protocol&nbsp;[<a href="#jennings04nat">12</a>],
+and STUNT, a TCP-enabled extension&nbsp;[<a href="#guha-stunt">8</a>,<a href="#guha04nutss">9</a>],
+also appear consistent with
+our results.
+These latter studies provide more information on each NAT
+by testing a wider variety of behaviors individually,
+instead of just testing for basic hole punching compatibility
+as NAT Check does.
+Since these more extensive tests
+require multiple cooperating clients behind the NAT
+and thus are more difficult to run,
+however,
+these results are so far available
+on a more limited variety of NATs.
+
+</p><h1><a name="SECTION00070000000000000000"></a>
+<a name="sec-related"></a>
+7 Related Work
+</h1>
+
+<p>
+UDP hole punching
+was first explored and publicly documented by Dan Kegel&nbsp;[<a href="#kegel99nat">13</a>],
+and is by now well-known in peer-to-peer application communities.
+Important aspects of UDP hole punching have also been indirectly documented
+in the specifications of several experimental protocols,
+such as STUN&nbsp;[<a href="#rfc3489">19</a>],
+ICE&nbsp;[<a href="#rosenberg03ice">17</a>],
+and Teredo&nbsp;[<a href="#huitema04teredo">11</a>].
+We know of no existing published work
+that thoroughly analyzes hole punching,
+however,
+or that points out the hairpin translation issue
+for multi-level NAT (Section&nbsp;<a href="#sec-hairpin">3.5</a>).
+
+</p><p>
+We also know of no prior work
+that develops TCP hole punching
+in the symmetric fashion described here.
+Even the existence of the crucial
+<code>SO_REUSEADDR</code>/<code>SO_REUSEPORT</code> options
+in the Berkeley sockets API
+appears to be little-known among P2P application developers.
+NatTrav&nbsp;[<a href="#eppinger05tcp">4</a>]
+implements a similar but asymmetric TCP hole punching procedure
+outlined earlier in Section&nbsp;<a href="#sec-tcp-seq">4.5</a>.
+NUTSS&nbsp;[<a href="#guha04nutss">9</a>]
+and NATBLASTER&nbsp;[<a href="#biggadike05natblaster">1</a>]
+implement more complex TCP hole punching tricks
+that can work around some of the bad NAT behaviors
+mentioned in Section&nbsp;<a href="#sec-good">5</a>,
+but they require the rendezvous server to spoof source IP addresses,
+and they also require the client applications to have access to “raw” sockets,
+usually available only at root or administrator privilege levels.
+
+</p><p>
+Protocols such as SOCKS&nbsp;[<a href="#rfc1928">14</a>],
+UPnP&nbsp;[<a href="#upnp01igd">26</a>],
+and MIDCOM&nbsp;[<a href="#rfc3303">22</a>]
+allow applications to traverse a NAT
+through explicit cooperation with the NAT.
+These protocols are not widely or consistently supported
+by NAT vendors or applications, however,
+and do not appear to address
+the increasingly important multi-level NAT scenarios.
+Explicit control of a NAT further
+requires the application to locate the NAT
+and perhaps authenticate itself,
+which typically involves explicit user configuration.
+When hole punching works,
+in contrast,
+it works with no user intervention.
+
+</p><p>
+Recent proposals
+such as HIP&nbsp;[<a href="#moskowitz03hip-arch">15</a>]
+and FARA&nbsp;[<a href="#clark03fara">2</a>]
+extend the Internet's basic architecture
+by decoupling a host's identity from its location&nbsp;[<a href="#saltzer82naming">20</a>].
+IPNL&nbsp;[<a href="#francis02ipnl">7</a>],
+UIP&nbsp;[<a href="#ford03scalable">5</a>,<a href="#ford03uip">6</a>],
+and DOA&nbsp;[<a href="#walfish04middleboxes">27</a>]
+propose schemes for routing across NATs
+in such an architecture.
+While such extensions
+are probably needed in the long term,
+hole punching enables applications
+to work over the existing network infrastructure immediately
+with no protocol stack upgrades,
+and leaves the notion of “host identity” for applications to define.
+
+</p><h1><a name="SECTION00080000000000000000"></a>
+<a name="sec-conc"></a>
+8 Conclusion
+</h1>
+
+<p>
+Hole punching is a general-purpose technique
+for establishing peer-to-peer connections in the presence of NAT.
+As long as the NATs involved meet certain behavioral requirements,
+hole punching works consistently and robustly
+for both TCP and UDP communication,
+and can be implemented by ordinary applications
+with no special privileges
+or specific network topology information.
+Hole punching fully preserves the transparency
+that is one of the most important hallmarks and attractions of NAT,
+and works even with multiple levels of NAT--though certain corner case situations require hairpin translation,
+a NAT feature not yet widely implemented.
+
+</p><p>
+
+</p><h2><a name="SECTION00081000000000000000">
+Acknowledgments</a>
+</h2>
+
+<p>
+The authors wish to thank Dave Andersen for his crucial support
+in gathering the results presented in Section&nbsp;<a href="#sec-eval">6</a>.
+We also wish to thank Henrik Nordstrom, Christian Huitema,
+Justin Uberti, Mema Roussopoulos,
+and the anonymous USENIX reviewers
+for valuable feedback
+on early drafts of this paper.
+Finally, we wish to thank the many volunteers
+who took the time to run NAT Check on their systems
+and submit the results.
+
+</p><p>
+
+</p><h2><a name="SECTION00090000000000000000">
+Bibliography</a>
+</h2><dl compact="compact"><dd><p></p></dd><dt><a name="biggadike05natblaster">1</a>
+</dt><dd>
+Andrew Biggadike, Daniel Ferullo, Geoffrey Wilson, and Adrian Perrig.
+<br>NATBLASTER: Establishing TCP connections between hosts behind
+  NATs.
+<br>In <em>ACM SIGCOMM Asia Workshop</em>, Beijing, China, April 2005.
+
+<p></p></dd><dt><a name="clark03fara">2</a>
+</dt><dd>
+David Clark, Robert Braden, Aaron Falk, and Venkata Pingali.
+<br>FARA: Reorganizing the addressing architecture.
+<br>In <em>ACM SIGCOMM FDNA Workshop</em>, August 2003.
+
+<p></p></dd><dt><a name="rfc2460">3</a>
+</dt><dd>
+S.&nbsp;Deering and R.&nbsp;Hinden.
+<br>Internet protocol, version 6 (IPv6) specification, December 1998.
+<br>RFC 2460.
+
+<p></p></dd><dt><a name="eppinger05tcp">4</a>
+</dt><dd>
+Jeffrey&nbsp;L. Eppinger.
+<br>TCP connections for P2P apps: A software approach to solving the
+  NAT problem.
+<br>Technical Report CMU-ISRI-05-104, Carnegie Mellon University, January
+  2005.
+
+<p></p></dd><dt><a name="ford03scalable">5</a>
+</dt><dd>
+Bryan Ford.
+<br>Scalable Internet routing on topology-independent node identities.
+<br>Technical Report MIT-LCS-TR-926, MIT Laboratory
+  for Computer Science, October 2003.
+
+<p></p></dd><dt><a name="ford03uip">6</a>
+</dt><dd>
+Bryan Ford.
+<br>Unmanaged internet protocol: Taming the edge network management
+  crisis.
+<br>In <em>Second Workshop on Hot Topics in Networks</em>, Cambridge, MA,
+  November 2003.
+
+<p></p></dd><dt><a name="francis02ipnl">7</a>
+</dt><dd>
+Paul Francis and Ramakrishna Gummadi.
+<br>IPNL: A NAT-extended Internet architecture.
+<br>In <em>ACM SIGCOMM</em>, August 2002.
+
+<p></p></dd><dt><a name="guha-stunt">8</a>
+</dt><dd>
+Saikat Guha and Paul Francis.
+<br>Simple traversal of UDP through NATs and TCP too (STUNT).
+<br><tt>http://nutss.gforge.cis.cornell.edu/</tt>.
+
+<p></p></dd><dt><a name="guha04nutss">9</a>
+</dt><dd>
+Saikat Guha, Yutaka Takeday, and Paul Francis.
+<br>NUTSS: A SIP-based approach to UDP and TCP network
+  connectivity.
+<br>In <em>SIGCOMM 2004 Workshops</em>, August 2004.
+
+<p></p></dd><dt><a name="rfc3027">10</a>
+</dt><dd>
+M.&nbsp;Holdrege and P.&nbsp;Srisuresh.
+<br>Protocol complications with the IP network address translator,
+  January 2001.
+<br>RFC 3027.
+
+<p></p></dd><dt><a name="huitema04teredo">11</a>
+</dt><dd>
+C.&nbsp;Huitema.
+<br>Teredo: Tunneling IPv6 over UDP through NATs, March 2004.
+<br>Internet-Draft (Work in Progress).
+
+<p></p></dd><dt><a name="jennings04nat">12</a>
+</dt><dd>
+C.&nbsp;Jennings.
+<br>NAT classification results using STUN, October 2004.
+<br>Internet-Draft (Work in Progress).
+
+<p></p></dd><dt><a name="kegel99nat">13</a>
+</dt><dd>
+Dan Kegel.
+<br>NAT and peer-to-peer networking, July 1999.
+<br><tt>  http://www.alumni.caltech.edu/~dank/peer-nat.html</tt>.
+
+<p></p></dd><dt><a name="rfc1928">14</a>
+</dt><dd>
+M.&nbsp;Leech et&nbsp;al.
+<br>SOCKS protocol, March 1996.
+<br>RFC 1928.
+
+<p></p></dd><dt><a name="moskowitz03hip-arch">15</a>
+</dt><dd>
+R.&nbsp;Moskowitz and P.&nbsp;Nikander.
+<br>Host identity protocol architecture, April 2003.
+<br>Internet-Draft (Work in Progress).
+
+<p></p></dd><dt><a name="natcheck">16</a>
+</dt><dd>
+NAT check.
+<br><tt>http://midcom-p2p.sourceforge.net/</tt>.
+
+<p></p></dd><dt><a name="rosenberg03ice">17</a>
+</dt><dd>
+J.&nbsp;Rosenberg.
+<br>Interactive connectivity establishment (ICE), October 2003.
+<br>Internet-Draft (Work in Progress).
+
+<p></p></dd><dt><a name="rosenberg03traversal">18</a>
+</dt><dd>
+J.&nbsp;Rosenberg, C.&nbsp;Huitema, and R.&nbsp;Mahy.
+<br>Traversal using relay NAT (TURN), October 2003.
+<br>Internet-Draft (Work in Progress).
+
+<p></p></dd><dt><a name="rfc3489">19</a>
+</dt><dd>
+J.&nbsp;Rosenberg, J.&nbsp;Weinberger, C.&nbsp;Huitema, and R.&nbsp;Mahy.
+<br>STUN - simple traversal of user datagram protocol (UDP) through
+  network address translators (NATs), March 2003.
+<br>RFC 3489.
+
+<p></p></dd><dt><a name="saltzer82naming">20</a>
+</dt><dd>
+J.&nbsp;Saltzer.
+<br>On the naming and binding of network destinations.
+<br>In P.&nbsp;Ravasio et al., editor, <em>Local Computer Networks</em>, pages
+  311-317. North-Holland, Amsterdam, 1982.
+<br>RFC 1498.
+
+<p></p></dd><dt><a name="rfc2663">21</a>
+</dt><dd>
+P.&nbsp;Srisuresh and M.&nbsp;Holdrege.
+<br>IP network address translator (NAT) terminology and
+  considerations, August 1999.
+<br>RFC 2663.
+
+<p></p></dd><dt><a name="rfc3303">22</a>
+</dt><dd>
+P.&nbsp;Srisuresh, J.&nbsp;Kuthan, J.&nbsp;Rosenberg, A.&nbsp;Molitor, and A.&nbsp;Rayhan.
+<br>Middlebox communication architecture and framework, August 2002.
+<br>RFC 3303.
+
+<p></p></dd><dt><a name="rfc793">23</a>
+</dt><dd>
+Transmission control protocol, September 1981.
+<br>RFC 793.
+
+<p></p></dd><dt><a name="rfc2766">24</a>
+</dt><dd>
+G.&nbsp;Tsirtsis and P.&nbsp;Srisuresh.
+<br>Network address translation - protocol translation (NAT-PT),
+  February 2000.
+<br>RFC 2766.
+
+<p></p></dd><dt><a name="uberti04">25</a>
+</dt><dd>
+Justin Uberti.
+<br>E-mail on IETF MIDCOM mailing list, February 2004.
+<br>Message-ID: <tt>&lt;402CEB11.1060906@aol.com&gt;</tt>.
+
+<p></p></dd><dt><a name="upnp01igd">26</a>
+</dt><dd>
+UPnP Forum.
+<br>Internet gateway device (IGD) standardized device control protocol,
+  November 2001.
+<br><code>http://www.upnp.org/</code>.
+
+<p></p></dd><dt><a name="walfish04middleboxes">27</a>
+</dt><dd>
+Michael Walfish, Jeremy Stribling, Maxwell Krohn, Hari Balakrishnan, Robert
+  Morris, and Scott Shenker.
+<br>Middleboxes no longer considered harmful.
+<br>In <em>USENIX Symposium on Operating Systems Design and
+  Implementation</em>, San Francisco, CA, December 2004.
+</dd></dl>
+
+<p>
+<br></p><hr>
+<address>
+Bryan Ford
+2005-02-17
+</address>
+</body></html>

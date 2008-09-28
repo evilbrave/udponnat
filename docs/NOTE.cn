@@ -6,11 +6,10 @@
     4, 一端网络类型为Port Restricted Firewall/Port Restricted Cone NAT,另一端网络类型为Symmetric NAT with Localization,可尝试通信,类型IV.
     5, 一端网络类型为Port Restricted Firewall/Port Restricted Cone NAT,另一端网络类型为Symmetric NAT,可尝试通信,类型V.
     6, 其他类型判定不可通信.
-    *, 事实上,Restricted Symmetric NAT with Localization也有很强的通信能力,几乎等同于Restricted NAT,但这种网络比较少,暂不单独考虑,与Port Restricted Symmetric NAT with Localization同作为Symmetric NAT with Localization处理.
 
 链路建立步骤:
     1, server获取自身网络类型,如果是Blocked类型则放弃,否则做xmpp listen.
-    2, client获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,,然后以xmpp方式发送client hello给server.
+    2, client获取自身网络类型及映射IP:PORT,如果是Blocked类型则放弃,然后以xmpp方式发送client hello给server.
     3, server创建新工作线程,创建udp socket,获取其映射地址IP:PORT.
     4, server根据两端网络类型,分类处理.
         I,如果server为Opened/Full cone NAT,xmpp通知(server cmd)client连接server的IP:PORT.
