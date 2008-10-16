@@ -118,6 +118,7 @@ chapter 18: p721 ~ p747
 chapter 15: p621 ~ p654
     1, 在Python专门术语中,有两种主要方法完成模式匹配:搜索(searching)和匹配(matching).
     2, 管道符号(|),就是您键盘上的竖杠,表示一个或操作,它的意思是选择被管道符号分隔的多个不同的正则表达式中的一个.
+        >>> re.match(r'abc|123', 'abc')
     3, 特殊字符\b and \B用来匹配单词边界. 两者之间的区别是,\b匹配的模式是一个单词边界,就是说,与之对应的模式一定在一个单词的开头,不论这个单词的前面是有字符(该词在一个字符串的中间),还是没有字符(该单词在一行的起始处). 同样地,\B只匹配出现在一个单词中间的模式(即,不在单词边界上的字符). 看下面几个例子:
         RE Pattern      Strings Matched
         the             任何包含有"the"的字符串
@@ -125,3 +126,32 @@ chapter 15: p621 ~ p654
         \bthe\b         仅匹配单词"the"
         \Bthe           任意包含"the"但不以"the"开头的单词
     4, 在上表中,我们注意到问号出现了不只一次(被重载),问号有两种含义: 1.单独使用时表示匹配出现零次或一次的情况, 2.紧跟在表示重复的元字符后面时,表示要求搜索引擎匹配的字符串越短越好.
+    5, 一对圆括号(())和正则表达式一起使用时可以实现以下任意一个(或两个)功能:
+􀁺       * 对正则表达式进行分组
+􀁺       * 匹配子组
+       有时你需要对正则表达式进行分组,其中一个很好的例子就是,你要用两个不同的正则表达式去比较一个字符串. 另一个理由是为整个正则表达式添加一个重复操作符(即不是仅重复单个字符或单一字符集).
+    6, 其实模块函数会对已编译对象进行缓存,所以不是所有使用相同正则表达式模式的search()和match()都需要编译.
+    7, Some of the functions in this module takes flags as optional parameters:
+        I  IGNORECASE  Perform case-insensitive matching.
+        L  LOCALE      Make \w, \W, \b, \B, dependent on the current locale.
+        M  MULTILINE   "^" matches the beginning of lines (after a newline)
+                       as well as the string.
+                       "$" matches the end of lines (before a newline) as well
+                       as the end of the string.
+        S  DOTALL      "." matches any character at all, including the newline.
+        X  VERBOSE     Ignore whitespace and comments for nicer looking RE's.
+        U  UNICODE     Make \w, \W, \b, \B, dependent on the Unicode locale.
+    8, group()方法或者返回所有匹配对象或是根据要求返回某个特定子组. groups()则很简单,它返回一个包含唯一或所有子组的元组. 如果正则表达式中没有子组的话,groups()将返回一个空元组,而group()仍会返回全部匹配对象.
+        >>> r = re.match(r'(ab(\d+)cd)\d+(\w+)', 'ab123cd456g')
+        >>> r.group()
+        'ab123cd456g'
+        >>> r.groups()
+        ('ab123cd', '123', 'g')
+        >>> r.group(0)
+        'ab123cd456g'
+        >>> r.group(1)
+        'ab123cd'
+        >>> r.group(2)
+        '123'
+        >>> r.group(3)
+        'g'
