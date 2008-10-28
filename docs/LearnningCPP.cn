@@ -158,3 +158,56 @@ chapter 15: p621 ~ p654
     9, 原始字符串的产生正是由于有正则表达式的存在. 原因是ASCII字符和正则表达式特殊字符间所产生的冲突. 比如,特殊符号"\b"在ASCII字符中代表退格键,但同时"\b"也是一个正则表达式的特殊符号,代表"匹配一个单词边界". 为了让RE编译器把两个字符"\b"当成你想要表达的字符串,而不是一个退格键,你需要用另一个反斜线对它进行转义,即可以这样写:"\\b".
        C语言是如何处理呢？
        原始字符串是为了让正则表达式引擎看到的引号中的字符串和我们看到的完全一样。
+
+2008年 10月 21日 星期二 10:04:44 CST
+chapter 8: p285 ~ p316
+    1, 如果一个复合语句(例如 if 子句, while 或 for 循环)的代码块仅仅包含一行代码, 那么它可以和前面的语句写在同一行上:
+        if make_hard_copy: send_data_to_printer()
+    2, 我们可以用 Python 字典给出更加优雅的解决方案, 我们将在第七章 "映射和集合类型" 中介绍字典.
+        msgs = {'create': 'create item',
+                'delete': 'delete item',
+                'update': 'update item'}
+        default = 'invalid choice... try again!'
+        action = msgs.get(user.cmd, default)
+       众所周知, 使用映射对象(比如字典)的一个最大好处就是它的搜索操作比类似 if-elif-else 语句或是 for 循环这样的序列查询要快很多.
+    3, >>> smaller = x if x < y else y
+    4, xrange()类似 range(), 不过当你有一个很大的范围列表时, xrange()可能更为适合, 因为它不会在内存里创建列表的完整拷贝.
+    5, sorted(), reversed(), enumerate(), zip()
+       其中两个函数 sorted() 和 zip() 返回一个序列(列表), 而另外两个函数 reversed() 和 enumerate() 返回迭代器(类似序列).
+    6, any() / all()
+    7, 文件对象生成的迭代器会自动调用 readline() 方法. 这样, 循环就可以访问文本文件的所有行. 程序员可以使用更简单的 for eachLine in myFile 替换 for eachLine in myFile.readlines().
+    8, 在迭代可变对象的时候修改它们并不是个好主意.
+    9, [expr for iter_var in iterable]
+       [x ** 2 for x in range(6)]
+       [expr for iter_var in iterable if cond_expr]
+       [x for x in seq if x % 2]
+       [(x+1,y+1) for x in range(3) for y in range(5)]
+       列表解析支持多重嵌套 for 循环以及多个 if 子句.
+    10, 生成器表达式: (expr for iter_var in iterable if cond_expr)
+
+chapter 9: p317 ~ p344
+    1, 当你使用 'U' 标志 打开文件的时候, 所有的行分割符(或行结束符, 无论它原来是什么)通过 Python 的输入方法(例如 read*())返回时都会被替换为换行符 NEWLINE(\n).
+
+2008年 10月 22日 星期三 15:24:46 CST
+chapter 10: p345 ~ p387
+    1, 当函数没有显式地返回一个值时, 例如没有执行到 return object 语句函数就结束了, 它就返回 None.
+    2, 关于异常的一部分内容在 Python 2.5 有了一些变化. 异常被迁移到了 new-style class 上, 启用了一个新的"所有异常的母亲", 这个类叫做 BaseException , 异常的继承结构有了少许调整, 为了让人们摆脱不得不除创建两个处理器的惯用法. KeyboardInterrupt 和 SystemExit 被从 Exception 里移出, 和 Exception 平级.
+    3,  try:
+            try_suite
+        except Exception1:
+            suite_for_Exception1
+        except (Exception2, Exception3, Exception4):
+            suite_for_Exceptions_2_3_and_4
+        except Exception5, Argument5:
+            suite_for_Exception5_plus_argument
+        except (Exception6, Exception7), Argument67:
+            suite_for_Exceptions6_and_7_plus_argument
+        except:
+            suite_for_all_other_exceptions
+        else:
+            no_exceptions_detected_suite
+        finally:
+            always_execute_suite
+
+2008年 10月 28日 星期二 16:14:55 CST
+chapter 11: p388 ~ p3**
