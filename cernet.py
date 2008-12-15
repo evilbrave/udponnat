@@ -51,7 +51,7 @@ def main():
                 return
         print 'NET TYPE:', sc.netType2String(NET_TYPE_PORTREST_NAT)
     else:
-        print 'I can\'t get enough information from different stun server.'
+        print 'I can\'t get enough information from those stun server.'
 
 if __name__ == '__main__':
     main()

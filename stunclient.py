@@ -71,31 +71,24 @@ class STUNClient(object):
     RET_TEST_IV_DIFF = 10
 
     def __init__(self):
-        self.sock = None
         self.serverIP = ''
         self.serverPort = -1
         self.timeout = 3
+        self.httpServerConnectable = ('www.google.com', 80)
         self.tid0 = 0x55555555
         self.tid1 = 0x5a5a5a5a
         self.tid2 = 0xaaaaaaaa
         self.tid3 = 0
 
-        self.localIP = ''
-        self.localPort = -1
-        self.mappedIP = ''
-        self.mappedPort = -1
-        self.changedIP = ''
-        self.changedPort = -1
-
-    def setServerAddr(self, stunServer=('stunserver.org', 3478)):
+    def setServerAddr(self, stunServer):
         # is host in ***.***.***.***?
-        host, port = stunServer
-        if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', host) == None:
-            # hostname
-            self.serverIP = socket.gethostbyname(host)
+        (host, port) = stunServer
+        if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', host):
+            self.serverIP = host
             self.serverPort = port
         else:
-            self.serverIP = host
+            # hostname
+            self.serverIP = socket.gethostbyname(host)
             self.serverPort = port
 
     def getServerAddr(self):
@@ -106,6 +99,12 @@ class STUNClient(object):
 
     def getTimeout(self):
         return self.timeout
+
+    def setHttpServerConnectable(self, addr):
+        self.httpServerConnectable = addr
+
+    def getHttpServerConnectable(self):
+        return self.httpServerConnectable
 
     def getNetType(self):
         '''
@@ -139,6 +138,8 @@ class STUNClient(object):
         to the Internet (or, at least, its behind a firewall that behaves
         like a full-cone NAT, but without the translation).  If no response
         is received, the client knows its behind a symmetric UDP firewall.
+        (Above is the original descriptions of the rfc3489. I've added some
+        extra test to it. You can see the below picture for details.)
         
         In the event that the IP address and port of the socket did not match
         the MAPPED-ADDRESS attribute in the response to test I, the client
@@ -199,7 +200,15 @@ class STUNClient(object):
            +--->Symmetric NAT          +------>Restricted
         '''
 
+        # init
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.localIP = ''
+        self.localPort = -1
+        self.mappedIP = ''
+        self.mappedPort = -1
+        self.changedIP = ''
+        self.changedPort = -1
+
         self.sock.settimeout(1)
 
         ret = self.testI1()
@@ -248,12 +257,12 @@ class STUNClient(object):
         st = time.time()
         while time.time() - st < 3:
             try:
-                resp, fro = sock.recvfrom(4096)
+                (resp, fro) = sock.recvfrom(4096)
                 # check resp
                 if len(resp) < 20:
                     continue
                 mh = resp[0: 20]
-                t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
+                (t, l, tid0, tid1, tid2, tid3) = struct.unpack('!HHIIII', mh)
                 if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
@@ -276,7 +285,7 @@ class STUNClient(object):
             mah = resp[respIdx: respIdx + 4]
             restLen -= 4
             respIdx += 4
-            t, l = struct.unpack('!HH', mah)
+            (t, l) = struct.unpack('!HH', mah)
             if l > restLen:
                 raise ServerError, 'Invalid server\'s response.'
             v = resp[respIdx: respIdx + l]
@@ -285,7 +294,7 @@ class STUNClient(object):
             if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
-                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                (_, f, p, s1, s2, s3, s4) = struct.unpack('!BBHBBBB', v)
                 if f != 1:
                     raise ServerError, 'Invalid server\'s response.'
                 mappedIP = '%d.%d.%d.%d' % (s1, s2, s3, s4)
@@ -303,14 +312,14 @@ class STUNClient(object):
         st = time.time()
         while time.time() - st < self.timeout:
             try:
-                resp, fro = self.sock.recvfrom(4096)
+                (resp, fro) = self.sock.recvfrom(4096)
                 if fro != (self.serverIP, self.serverPort):
                     continue
                 # check resp
                 if len(resp) < 20:
                     continue
                 mh = resp[0: 20]
-                t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
+                (t, l, tid0, tid1, tid2, tid3) = struct.unpack('!HHIIII', mh)
                 if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
@@ -335,7 +344,7 @@ class STUNClient(object):
             mah = resp[respIdx: respIdx + 4]
             restLen -= 4
             respIdx += 4
-            t, l = struct.unpack('!HH', mah)
+            (t, l) = struct.unpack('!HH', mah)
             if l > restLen:
                 raise ServerError, 'Invalid server\'s response.'
             v = resp[respIdx: respIdx + l]
@@ -344,7 +353,7 @@ class STUNClient(object):
             if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
-                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                (_, f, p, s1, s2, s3, s4) = struct.unpack('!BBHBBBB', v)
                 if f != 1:
                     raise ServerError, 'Invalid server\'s response.'
                 self.mappedIP = '%d.%d.%d.%d' % (s1, s2, s3, s4)
@@ -352,7 +361,7 @@ class STUNClient(object):
             elif t == STUNClient.CHANGED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
-                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                (_, f, p, s1, s2, s3, s4) = struct.unpack('!BBHBBBB', v)
                 if f != 1:
                     raise ServerError, 'Invalid server\'s response.'
                 self.changedIP = '%d.%d.%d.%d' % (s1, s2, s3, s4)
@@ -370,10 +379,10 @@ class STUNClient(object):
     def getLocalIPPort(self):
         # there are some bugs, but i can't find better way.
         s = socket.socket()
-        s.connect(('www.google.com', 80))
-        self.localIP, _ = s.getsockname()
+        s.connect(self.httpServerConnectable)
+        (self.localIP, _) = s.getsockname()
         s.close()
-        _, self.localPort = self.sock.getsockname()
+        (_, self.localPort) = self.sock.getsockname()
 
     def testII(self):
         # make request packet
@@ -385,14 +394,14 @@ class STUNClient(object):
         st = time.time()
         while time.time() - st < self.timeout:
             try:
-                resp, fro = self.sock.recvfrom(4096)
+                (resp, fro) = self.sock.recvfrom(4096)
                 if fro != (self.changedIP, self.changedPort):
                     continue
                 # check resp
                 if len(resp) < 20:
                     continue
                 mh = resp[0: 20]
-                t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
+                (t, l, tid0, tid1, tid2, tid3) = struct.unpack('!HHIIII', mh)
                 if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
@@ -419,14 +428,14 @@ class STUNClient(object):
         st = time.time()
         while time.time() - st < self.timeout:
             try:
-                resp, fro = self.sock.recvfrom(4096)
+                (resp, fro) = self.sock.recvfrom(4096)
                 if fro != (self.changedIP, self.changedPort):
                     continue
                 # check resp
                 if len(resp) < 20:
                     continue
                 mh = resp[0: 20]
-                t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
+                (t, l, tid0, tid1, tid2, tid3) = struct.unpack('!HHIIII', mh)
                 if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
@@ -451,7 +460,7 @@ class STUNClient(object):
             mah = resp[respIdx: respIdx + 4]
             restLen -= 4
             respIdx += 4
-            t, l = struct.unpack('!HH', mah)
+            (t, l) = struct.unpack('!HH', mah)
             if l > restLen:
                 raise ServerError, 'Invalid server\'s response.'
             v = resp[respIdx: respIdx + l]
@@ -460,7 +469,7 @@ class STUNClient(object):
             if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
-                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                (_, f, p, s1, s2, s3, s4) = struct.unpack('!BBHBBBB', v)
                 if f != 1:
                     raise ServerError, 'Invalid server\'s response.'
                 mappedIP = '%d.%d.%d.%d' % (s1, s2, s3, s4)
@@ -484,14 +493,14 @@ class STUNClient(object):
         st = time.time()
         while time.time() - st < self.timeout:
             try:
-                resp, fro = self.sock.recvfrom(4096)
+                (resp, fro) = self.sock.recvfrom(4096)
                 if fro != (self.serverIP, self.changedPort):
                     continue
                 # check resp
                 if len(resp) < 20:
                     continue
                 mh = resp[0: 20]
-                t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
+                (t, l, tid0, tid1, tid2, tid3) = struct.unpack('!HHIIII', mh)
                 if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
@@ -522,12 +531,12 @@ class STUNClient(object):
         st = time.time()
         while time.time() - st < self.timeout:
             try:
-                resp, fro = self.sock.recvfrom(4096)
+                (resp, fro) = self.sock.recvfrom(4096)
                 # check resp
                 if len(resp) < 20:
                     continue
                 mh = resp[0: 20]
-                t, l, tid0, tid1, tid2, tid3 = struct.unpack('!HHIIII', mh)
+                (t, l, tid0, tid1, tid2, tid3) = struct.unpack('!HHIIII', mh)
                 if t != STUNClient.BindingResponse:
                     continue
                 if l != len(resp) - 20:
@@ -562,7 +571,7 @@ class STUNClient(object):
             mah = resp1[respIdx: respIdx + 4]
             restLen -= 4
             respIdx += 4
-            t, l = struct.unpack('!HH', mah)
+            (t, l) = struct.unpack('!HH', mah)
             if l > restLen:
                 raise ServerError, 'Invalid server\'s response.'
             v = resp1[respIdx: respIdx + l]
@@ -571,7 +580,7 @@ class STUNClient(object):
             if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
-                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                (_, f, p, s1, s2, s3, s4) = struct.unpack('!BBHBBBB', v)
                 if f != 1:
                     raise ServerError, 'Invalid server\'s response.'
                 mappedIP1 = '%d.%d.%d.%d' % (s1, s2, s3, s4)
@@ -589,7 +598,7 @@ class STUNClient(object):
             mah = resp2[respIdx: respIdx + 4]
             restLen -= 4
             respIdx += 4
-            t, l = struct.unpack('!HH', mah)
+            (t, l) = struct.unpack('!HH', mah)
             if l > restLen:
                 raise ServerError, 'Invalid server\'s response.'
             v = resp2[respIdx: respIdx + l]
@@ -598,7 +607,7 @@ class STUNClient(object):
             if t == STUNClient.MAPPED_ADDRESS:
                 if l != 8:
                     raise ServerError, 'Invalid server\'s response.'
-                _, f, p, s1, s2, s3, s4 = struct.unpack('!BBHBBBB', v)
+                (_, f, p, s1, s2, s3, s4) = struct.unpack('!BBHBBBB', v)
                 if f != 1:
                     raise ServerError, 'Invalid server\'s response.'
                 mappedIP2 = '%d.%d.%d.%d' % (s1, s2, s3, s4)
@@ -635,7 +644,7 @@ class STUNClient(object):
 
 if __name__ == '__main__':
     sc = STUNClient()
-    sc.setServerAddr(('stunserver.org', 3478))
+    #sc.setServerAddr(('stunserver.org', 3478))
     #sc.setServerAddr(('stun.ekiga.net', 3478))
-    #sc.setServerAddr(('stun.iptel.org', 3478))
+    sc.setServerAddr(('stun.iptel.org', 3478))
     print 'NET TYPE:', sc.netType2String(sc.getNetType())
