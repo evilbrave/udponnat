@@ -24,7 +24,7 @@
 #############################################################################
 
 # constant
-sessionIDLength = 20
-timeout         = 30
-symScanStart    = 32000
-symScanRange    = 500
+LOCAL_RANGE         = 200
+SESSION_ID_LENGTH   = 20
+TIMEOUT             = 30
+SYM_SCAN_RANGE      = 500

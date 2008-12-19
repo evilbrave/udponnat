@@ -25,6 +25,8 @@
 
 import socket, struct, time, re
 
+import common
+
 # network types
 NET_TYPE_OPENED = 0
 NET_TYPE_FULLCONE_NAT = 1
@@ -49,7 +51,6 @@ class ServerError(STUNError):
 class STUNClient(object):
     '''A STUN client implementated by Python.'''
     # constant
-    LocalRange = 200
     # Message Types
     BindingRequest = 0x0001
     BindingResponse = 0x0101
@@ -617,8 +618,8 @@ class STUNClient(object):
 
         #print 'mappedPort1 = %d, mappedPort2 = %d' % (mappedPort1, mappedPort2)
         if mappedIP1 == mappedIP2 \
-           and mappedPort1 in range(mappedPort2 - self.LocalRange, 
-                                    mappedPort2 + self.LocalRange):
+           and mappedPort1 in range(mappedPort2 - common.LOCAL_RANGE, 
+                                    mappedPort2 + common.LOCAL_RANGE):
             return STUNClient.RET_TEST_IV_LOCAL
         return STUNClient.RET_TEST_IV_DIFF
 
