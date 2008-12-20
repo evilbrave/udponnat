@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/python2.5
 # encoding=UTF-8
 
 import xmpp
@@ -14,8 +14,8 @@ def messageCB(cnx, msg):
 
 if __name__ == '__main__':
     # 给实例的gtalk帐号和密码
-    login = 'user***'
-    pwd = 'pwd***'
+    login = 'udponnat.user'
+    pwd = '***'
     # 创建client对象
     cnx = xmpp.Client('gmail.com', debug=[])
     # 连接到google的服务器
