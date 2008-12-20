@@ -14,7 +14,7 @@ def messageCB(cnx, msg):
 
 if __name__ == '__main__':
     # 给实例的gtalk帐号和密码
-    login = 'udponnat.user'
+    login = 'udponnat.client'
     pwd = '***'
     # 创建client对象
     cnx = xmpp.Client('gmail.com', debug=[])

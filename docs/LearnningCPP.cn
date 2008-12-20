@@ -210,4 +210,31 @@ chapter 10: p345 ~ p387
             always_execute_suite
 
 2008年 10月 28日 星期二 16:14:55 CST
-chapter 11: p388 ~ p3**
+chapter 11: p388 ~ p449
+
+2008年 12月 15日 星期一 14:56:30 CST
+chapter 12: p450 ~ p471
+    1,  >>> sys.path
+        ['', '/usr/local/lib/python26.zip', '/usr/local/lib/python2.6', '/usr/local/lib/python2.6/plat-linux2', '/usr/local/lib/python2.6/lib-tk', '/usr/local/lib/python2.6/lib-old', '/usr/local/lib/python2.6/lib-dynload', '/usr/local/lib/python2.6/site-packages']
+    2,  >>> sys.modules
+    3,  我们在第 11 章已经介绍过在执行期间有两个或三个活动的名称空间. 这三个名称空间分别是局部名称空间,全局名称空间和内建名称空间,但局部名称空间在执行期间是不断变化的,所以我们说"两个或三个". 从名称空间中访问这些名字依赖于它们的加载顺序,或是系统加载这些名称空间的顺序.
+        Python 解释器首先加载内建名称空间. 它由 __builtins__ 模块中的名字构成. 随后加载执行模块的全局名称空间,它会在模块开始执行后变为活动名称空间. 这样我们就有了两个活动的名称空间.
+    4,  __builtins__ 模块和 __builtin__ 模块不能混淆. 虽然它们的名字相似——尤其对于新手来说. __builtins__ 模块包含内建名称空间中内建名字的集合. 其中大多数(如果不是全部的话)来自 __builtin__ 模块,该模块包含内建函数,异常以及其他属性. 在标准 Python 执行环境下,__builtins__ 包含 __builtin__ 的所有名字.
+    5,  我们推荐所有的模块在 Python 模块的开头部分导入. 而且最好按照这样的顺序:
+        􀁺 Python 标准库模块
+        􀁺 Python 第三方模块
+        􀁺 应用程序自定义模块
+    6,  >>> import longmodulename
+        >>> short = longmodulename
+        >>> del longmodulename
+
+        import Tkinter as tk
+        from cgi import FieldStorage as form
+    7,  加载模块会导致这个模块被"执行".
+    8,  一个模块只被加载一次,无论它被导入多少次. 
+    9,  只从模块导入名字的另一个副作用是那些名字会成为局部名称空间的一部分. 这可能导致覆盖一个已经存在的具有相同名字的对象. 而且对这些变量的改变只影响它的局部拷贝而不是所导入模块的原始名称空间. 也就是说,绑定只是局部的而不是整个名称空间.
+    10, Python 1.5 加入了 __import__() 函数,它作为实际上导入模块的函数,这意味着 import 语句调用 __import__() 函数完成它的工作.
+    11, globals() 和 locals() 内建函数分别返回调用者全局和局部名称空间的字典.
+    12, 12.7 包
+    13, 导入包只是执行包下的 __init__.py,路径上的父包会自动导入,但不自动导入子包.
+    14, 如果你不想让某个模块属性被 "from module import *" 导入, 那么你可以给你不想导入的属性名称加上一个下划线( _ ). 不过如果你导入了整个模块或是你显式地导入某个属性(例如 import foo._bar ), 这个隐藏数据的方法就不起作用了.
