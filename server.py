@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/python2.5
 
 #############################################################################
 #                                                                           #
@@ -23,11 +23,15 @@
 #                                                                           #
 #############################################################################
 
+import random, re, socket, Queue, time, select, getpass, md5, base64, \
+       urllib2, errno
+from threading import Thread
+
+import xmpp
+
+import common
 from stunclient import *
 from parseconf import *
-from threading import Thread
-import xmpp, random, re, socket, Queue, time, select, common, getpass, md5, \
-       base64, urllib2
 
 # global messages list
 messages = []
@@ -45,14 +49,19 @@ class ServerConf(ParseConf):
         t = self.getValue('net_type')
         return int(t)
     
-    def getStunServer(self):
-        addr = self.getValue('stun_server')
-        (h, _, p) = addr.partition(':')
-        if p == '':
-            return (h, 3478)
-        else:
-            return (h, int(p))
+    #def getStunServer(self):
+    #    addr = self.getValue('stun_server')
+    #    (h, _, p) = addr.partition(':')
+    #    if p == '':
+    #        return (h, 3478)
+    #    else:
+    #        return (h, int(p))
     
+    def getGTalkServer(self):
+        addr = self.getValue('gtalk_server')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
+
     def getLoginInfo(self):
         u = self.getValue('i')
         p = getpass.getpass('Password for %s: ' % u)
@@ -61,11 +70,14 @@ class ServerConf(ParseConf):
     def getLoginUser(self):
         return self.getValue('i')
 
-    def getAdminUser(self):
-        return self.getValue('admin')
+    #def getAdminUser(self):
+    #    return self.getValue('admin')
 
     def getAllowedUser(self):
-        return self.getValue('allowed_user').split()
+        us = []
+        for u in self.getValue('allowed_user').split():
+            us.append(u + '@gmail.com')
+        return us
 
 def xmppMessageCB(cnx, msg):
     u = msg.getFrom()
@@ -75,17 +87,17 @@ def xmppMessageCB(cnx, msg):
         messages.append((str(u).strip(), str(m).strip()))
         #messages.append((unicode(u), unicode(m)))
 
-def xmppListen(user, passwd):
+def xmppListen(gtalkServerAddr, user, passwd):
     cnx = xmpp.Client('gmail.com', debug=[])
-    cnx.connect(server=('talk.google.com', 443))
-    cnx.auth(user, passwd, 'UDPonNAT')
+    cnx.connect(server=gtalkServerAddr)
+    cnx.auth(user, passwd, 'UDPonNAT_Server')
     cnx.sendInitPresence()
     cnx.RegisterHandler('message', xmppMessageCB)
     return cnx
 
 def randStr():
     s = ''
-    for i in range(common.sessionIDLength):
+    for i in range(common.SESSION_ID_LENGTH):
         s += random.choice('abcdefghijklmnopqrstuvwxyz')
     return s
 
@@ -99,8 +111,16 @@ class EstablishError(WorkerError):
     def __str__(self):
         return '<Establish Error: %s>' % self.reason
 
+class TransferError(WorkerError):
+    def __init__(self, reason):
+        self.reason = reason
+
+    def __str__(self):
+        return '<Transfer Error: %s>' % self.reason
+
 class WorkerThread(Thread):
     '''worker thread'''
+    # srcUser without '/'
     def __init__(self, toAddr, i, myNetType, iQueue, oQueue, sessKey, \
                  srcNetType, srcAddr, srcUser):
         Thread.__init__(self)
@@ -113,100 +133,119 @@ class WorkerThread(Thread):
         self.srcNetType = srcNetType 
         self.srcAddr = srcAddr
         self.srcUser = srcUser
-        # other
-        self.toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
 
     def run(self):
-        fromSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
-        fromSock.settimeout(1)
+        # prepare
+        try:
+            self.prepare()
+        except Exception, e:
+            self.cannotEstablish('Server internal error')
+            print 'Catch exception when process new request from %s at %s:' \
+                  % (self.srcUser, self.srcAddr), e
+            return
+        # establish
+        try:
+            self.establish()
+        except Exception, e:
+            print 'Catch exception when try to establish new connection with %s at %s:' \
+                  % (self.srcUser, self.srcAddr), e
+            return
+        print 'Connection is established with %s at %s.' % (self.srcUser, self.srcAddr)
+        # transfer
+        try:
+            self.transfer()
+        except Exception, e:
+            print 'Catch exception when transfer data with %s at %s:' \
+                  % (self.srcUser, self.srcAddr), e
+            return
+        print 'Disconnected with %s at %s.' % (self.srcUser, self.srcAddr)
+
+    def prepare(self):
+        # prepare for establish new connection
+        self.toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+        self.fromSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+        # MUST settimeout before call getMappedAddr
+        self.fromSock.settimeout(1)
         sc = STUNClient()
-        try:
-            (myIP, myPort) = sc.getMappedAddr(fromSock)
-            #print 'myAddr(%s:%d)' % (myIP, myPort)
-        except ServerError, e:
-            self.failedToEstablish('Server internal error')
-            print 'Failed to accept new connection from %s at %s: %s.' \
-                  % (self.srcUser, self.srcAddr, e)
-            return
+        (self.myIP, self.myPort) = sc.getMappedAddr(self.fromSock)
 
-        try:
-            # have server and client got the same mapped ip?
-            if myIP == self.srcAddr[0]:
-                self.failedToEstablish('Two peers are in the same LAN')
-                raise EstablishError('Two peers are in the same LAN')
-            # opened or fullcone nat?
-            elif self.myNetType == NET_TYPE_OPENED \
-                 or self.myNetType == NET_TYPE_FULLCONE_NAT:
-                # tell client to connect
-                self.establishIA((myIP, myPort), fromSock)
-            elif self.srcNetType == NET_TYPE_OPENED \
-                 or self.srcNetType == NET_TYPE_FULLCONE_NAT:
-                self.establishIB(fromSock)
-            # restrict?
-            elif self.myNetType == NET_TYPE_REST_FIREWALL \
-                 or self.myNetType == NET_TYPE_REST_NAT:
-                # tell client to connect
-                self.establishIIA((myIP, myPort), fromSock)
-            elif self.srcNetType == NET_TYPE_REST_FIREWALL \
-                 or self.srcNetType == NET_TYPE_REST_NAT:
-                self.establishIIB((myIP, myPort), fromSock)
-            # both port restrict?
-            elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
-                  or self.myNetType == NET_TYPE_PORTREST_NAT) \
-                 and (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
-                      or self.srcNetType == NET_TYPE_PORTREST_NAT):
-                self.establishIII((myIP, myPort), fromSock)
-            # one port restrict and one symmetric with localization
-            elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
-                  or self.myNetType == NET_TYPE_PORTREST_NAT) \
-                 and self.srcNetType == NET_TYPE_SYM_NAT_LOCAL:
-                self.establishIVA((myIP, myPort), fromSock)
-            elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
-                  or self.srcNetType == NET_TYPE_PORTREST_NAT) \
-                 and self.myNetType == NET_TYPE_SYM_NAT_LOCAL:
-                fromSock = self.establishIVB((myIP, myPort), fromSock)
-            # one port restrict and one symmetric
-            elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
-                  or self.myNetType == NET_TYPE_PORTREST_NAT) \
-                 and self.srcNetType == NET_TYPE_SYM_NAT:
-                self.establishVA((myIP, myPort), fromSock)
-            elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
-                  or self.srcNetType == NET_TYPE_PORTREST_NAT) \
-                 and self.myNetType == NET_TYPE_SYM_NAT:
-                self.establishVB((myIP, myPort), fromSock)
-            else:
-                self.failedToEstablish('Peer\'s NetType dismatched')
-                raise EstablishError('Peer\'s NetType dismatched')
-        except EstablishError, e:
-            print 'Failed to accept new connection from %s at %s: %s.' \
-                  % (self.srcUser, self.srcAddr, e)
-            return
+    def establish(self):
+        # have server and client got the same mapped ip?
+        if self.myIP == self.srcAddr[0]:
+            self.cannotEstablish('Two peers are in the same LAN')
+            raise EstablishError('Two peers are in the same LAN')
+        # opened or fullcone nat?
+        elif self.myNetType == NET_TYPE_OPENED \
+             or self.myNetType == NET_TYPE_FULLCONE_NAT:
+            # tell client to connect
+            self.establishIA((self.myIP, self.myPort), self.fromSock)
+        elif self.srcNetType == NET_TYPE_OPENED \
+             or self.srcNetType == NET_TYPE_FULLCONE_NAT:
+            self.establishIB(self.fromSock)
+        # restrict?
+        elif self.myNetType == NET_TYPE_REST_FIREWALL \
+             or self.myNetType == NET_TYPE_REST_NAT:
+            # tell client to connect
+            self.establishIIA((self.myIP, self.myPort), self.fromSock)
+        elif self.srcNetType == NET_TYPE_REST_FIREWALL \
+             or self.srcNetType == NET_TYPE_REST_NAT:
+            self.establishIIB((self.myIP, self.myPort), self.fromSock)
+        # both port restrict?
+        elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
+              or self.myNetType == NET_TYPE_PORTREST_NAT) \
+             and (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
+                  or self.srcNetType == NET_TYPE_PORTREST_NAT):
+            self.establishIII((self.myIP, self.myPort), self.fromSock)
+        # one port restrict and one symmetric with localization
+        elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
+              or self.myNetType == NET_TYPE_PORTREST_NAT) \
+             and self.srcNetType == NET_TYPE_SYM_NAT_LOCAL:
+            self.establishIVA((self.myIP, self.myPort), self.fromSock)
+        elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
+              or self.srcNetType == NET_TYPE_PORTREST_NAT) \
+             and self.myNetType == NET_TYPE_SYM_NAT_LOCAL:
+            self.fromSock = self.establishIVB((self.myIP, self.myPort), self.fromSock)
+        # one port restrict and one symmetric
+        elif (self.myNetType == NET_TYPE_PORTREST_FIREWALL \
+              or self.myNetType == NET_TYPE_PORTREST_NAT) \
+             and self.srcNetType == NET_TYPE_SYM_NAT:
+            self.establishVA((self.myIP, self.myPort), self.fromSock)
+        elif (self.srcNetType == NET_TYPE_PORTREST_FIREWALL \
+              or self.srcNetType == NET_TYPE_PORTREST_NAT) \
+             and self.myNetType == NET_TYPE_SYM_NAT:
+            self.establishVB((self.myIP, self.myPort), self.fromSock)
+        else:
+            self.cannotEstablish('Peer\'s NetType dismatched')
+            raise EstablishError('Peer\'s NetType dismatched')
 
-        print 'Accept new connection from %s at %s.' \
-              % (self.srcUser, self.srcAddr)
+    def transfer(self):
         # web report
-        self.webReport((myIP, myPort))
+        try:
+            self.webReport((self.myIP, self.myPort))
+        except Exception: 
+            pass
         # non-blocking IO
-        fromSock.setblocking(False)
+        self.fromSock.setblocking(False)
         self.toSock.setblocking(False)
         lastCheck = time.time()
         # transfer
         while True:
             # check to/from socket
-            (rs, _, es) = select.select([fromSock, self.toSock], [], [], 1)
+            (rs, _, es) = select.select([self.fromSock, self.toSock], [], [], 1)
             if len(es) != 0:
                 # error
-                #print 'Transfer error.'
-                break
-            if fromSock in rs:
-                # fromSock is ready for read
+                raise TransferError('Select error')
+            if self.fromSock in rs:
+                # self.fromSock is ready for read
                 while True:
                     try:
-                        (d, _) = fromSock.recvfrom(2048)
+                        (d, _) = self.fromSock.recvfrom(2048)
                         if d == '':
                             # preserve connection
                             continue
-                    except socket.error:
+                    except socket.error, e:
+                        if e[0] != errno.EAGAIN and e[0] != 10035:
+                            raise e
                         # EAGAIN
                         break
                     self.toSock.sendto(d, self.toAddr)
@@ -215,34 +254,36 @@ class WorkerThread(Thread):
                 while True:
                     try:
                         (d, _) = self.toSock.recvfrom(2048)
-                    except socket.error:
+                    except socket.error, e:
+                        if e[0] != errno.EAGAIN and e[0] != 10035:
+                            raise e
                         # EAGAIN
                         break
-                    fromSock.sendto(d, self.srcAddr)
+                    self.fromSock.sendto(d, self.srcAddr)
             # check iQueue
             t = time.time()
             if t - lastCheck >= 1:
                 lastCheck = t
                 # iQueue, mainly for management
                 # preserve connection
-                fromSock.sendto('', self.srcAddr)
+                self.fromSock.sendto('', self.srcAddr)
             # quit?
             if quitNow:
                 break
 
+    # m is the actual message will be sent
     def sendXmppMessage(self, m):
         self.oQueue.put(m)
 
     def waitXmppMessage(self, timeout=None):
         if not timeout:
-            timeout = common.timeout
+            timeout = common.TIMEOUT
         try:
             return self.iQueue.get(True, timeout)
         except Queue.Empty:
             return None
 
-    def failedToEstablish(self, reason):
-        #print 'failedToEstablish(%d)' % reason
+    def cannotEstablish(self, reason):
         self.sendXmppMessage('Cannot;%s;%s' % (reason, self.sessKey))
 
     def establishIA(self, addr, sock):
@@ -251,7 +292,7 @@ class WorkerThread(Thread):
         # wait for udp packet
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
@@ -273,7 +314,7 @@ class WorkerThread(Thread):
         sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
@@ -294,7 +335,7 @@ class WorkerThread(Thread):
         # wait for udp packet
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
@@ -314,7 +355,7 @@ class WorkerThread(Thread):
         self.sendXmppMessage('Do;IIB;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
         # wait for Ack
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             m = self.waitXmppMessage()
             if not m:
                 continue
@@ -328,7 +369,7 @@ class WorkerThread(Thread):
         sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
@@ -349,7 +390,7 @@ class WorkerThread(Thread):
         # wait for udp packet
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
@@ -368,7 +409,7 @@ class WorkerThread(Thread):
         self.sendXmppMessage('Do;IVA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
         # wait for Ack
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             m = self.waitXmppMessage()
             if not m:
                 continue
@@ -388,10 +429,10 @@ class WorkerThread(Thread):
             raise EstablishError('Invalid client message')
         port = int(m.split(';')[2].split(':')[1])
         # try to send udp packet to a range
-        bp = port - STUNClient.LocalRange
+        bp = port - common.LOCAL_RANGE
         if bp < 1:
             bp = 1
-        ep = port + STUNClient.LocalRange
+        ep = port + common.LOCAL_RANGE
         if ep > 65536:
             ep = 65536
         for p in range(bp, ep):
@@ -399,7 +440,7 @@ class WorkerThread(Thread):
         # wait for Welcome
         sock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = sock.recvfrom(2048)
             except socket.timeout:
@@ -427,7 +468,7 @@ class WorkerThread(Thread):
         # wait for client's 'Hi' (udp)
         newSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = newSock.recvfrom(2048)
             except socket.timeout:
@@ -444,94 +485,92 @@ class WorkerThread(Thread):
 
     def establishVA(self, addr, sock):
         #print 'establishVA()'
-        # scan
-        for p in range(common.symScanStart + 1, common.symScanStart + 65536):
-            # punch
-            sock.sendto('Punch', (self.srcAddr[0], p % 65536))
-            # should we tell client to connect?
-            if p % common.symScanRange == 0 or p % 65536 == common.symScanStart - 1:
-                # tell client to try to connect
-                self.sendXmppMessage('Do;VA;%s:%d;%s' % \
-                                     (addr[0], addr[1], self.sessKey))
-                # wait for Ack
-                ct = time.time()
-                while time.time() - ct < common.timeout:
-                    m = self.waitXmppMessage()
-                    if not m:
-                        continue
-                    # got message
-                    if m == 'Ack;VA;%s' % self.sessKey:
-                        break
-                else:
-                    # timeout
-                    raise EstablishError('Timeout')
-                # have we received client's hello?
-                sock.setblocking(False)
-                while True:
-                    try:
-                        (data, fro) = sock.recvfrom(2048)
-                    except socket.error:
-                        break
-                    # got some data
-                    if data == 'Hi;%s' % self.sessKey:
-                        sock.sendto('Welcome;%s' % self.sessKey, fro)
-                        self.srcAddr = fro
-                        return
-        # failed to try to connect
-        self.failedToEstablish('Failed to try')
-        raise EstablishError('Failed to try')
-
-    def establishVB(self, addr, sock):
-        #print 'establishVB()'
-        # tell client to punch and wait for udp request
-        self.sendXmppMessage('Do;VB;%s:%d;%s' % \
-                             (addr[0], addr[1], self.sessKey))
-        # wait for Ack
+        # tell client do VA
+        self.sendXmppMessage('Do;VA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
+        # wait for client's Ack
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             m = self.waitXmppMessage()
             if not m:
                 continue
             # got message
-            if m == 'Ack;VB;%s' % self.sessKey:
+            if re.match(r'^Ack;VA;%s$' % self.sessKey, m):
                 break
         else:
             # timeout
             raise EstablishError('Timeout')
-        while True:
-            # send udp packet
-            sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
-            # tell client we have sent.
-            self.sendXmppMessage('Done;VBSent;%s' % self.sessKey)
+        # scan all ports of the server
+        portBegin = 1
+        while portBegin < 65536:
+            # try to connect server's port range
+            for p in range(portBegin, portBegin + common.SYM_SCAN_RANGE):
+                if p < 65536:
+                    # send client hi (udp)
+                    sock.sendto('Hi;%s' % self.sessKey, (self.srcAddr[0], p))
+            portBegin = p + 1
+            # tell server we've sent Hi
+            self.sendXmppMessage('Done;VASent;%s' % self.sessKey)
             # wait for any message, both udp and xmpp.
             sock.setblocking(False)
             ct = time.time()
-            while time.time() - ct < common.timeout:
+            while time.time() - ct < common.TIMEOUT:
                 m = self.waitXmppMessage(1)
-                # did we receive server's 'Welcome'(udp)?
+                # did we receive client's 'Welcome'(udp)?
                 try:
                     (data, fro) = sock.recvfrom(2048)
                     # got some data
-                    if fro == self.srcAddr \
-                       and data == 'Welcome;%s' % self.sessKey:
+                    if 'Welcome;%s' % self.sessKey:
                         # connection established
+                        self.srcAddr = fro
                         return
-                except socket.error:
-                    pass
+                except socket.error, e:
+                    if e[0] != errno.EAGAIN and e[0] != 10035:
+                        raise e
+                    # EAGAIN, ignore
                 # process messages
                 if not m:
                     continue
-                elif m == 'Ack;VB;%s' % self.sessKey:
+                elif m == 'Ack;VA;%s' % self.sessKey:
                     # next range
                     break
-                elif re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;%s$' % self.sessKey, m):
-                    # Cannot
-                    raise EstablishError(m.split(';')[1])
-                else:
-                    # Invalid message
-                    raise EstablishError('Invalid client message')
             else:
                 raise EstablishError('Timeout')
+        else:
+            raise EstablishError('Failed to try')
+
+    def establishVB(self, addr, sock):
+        #print 'establishVB()'
+        while True:
+            # punch
+            sock.sendto('Punch', self.srcAddr)
+            # tell client do VB
+            self.sendXmppMessage('Do;VB;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
+            # wait for client's Ack
+            ct = time.time()
+            while time.time() - ct < common.TIMEOUT:
+                m = self.waitXmppMessage()
+                if not m:
+                    continue
+                # got message
+                if re.match(r'^Ack;VB;%s$' % self.sessKey, m):
+                    break
+            else:
+                # timeout
+                raise EstablishError('Timeout')
+            # have we received client's hello?
+            sock.setblocking(False)
+            while True:
+                try:
+                    (data, fro) = sock.recvfrom(2048)
+                except socket.error, e:
+                    if e[0] != errno.EAGAIN and e[0] != 10035:
+                        raise e
+                    # EAGAIN
+                    break
+                # got some data
+                if fro == self.srcAddr and data == 'Hi;%s' % self.sessKey:
+                    sock.sendto('Welcome;%s' % self.sessKey, fro)
+                    return
 
     def webReport(self, myMappedAddr):
         # compute digest
@@ -542,7 +581,7 @@ class WorkerThread(Thread):
         digest = base64.b16encode(m.digest())
 
         # report, setup proxy for user in china
-        proxy_support = urllib2.ProxyHandler({'http': 'www.google.cn:80'})
+        proxy_support = urllib2.ProxyHandler({'http': 'www.google.com:80'})
         opener = urllib2.build_opener(proxy_support)
         # install it
         urllib2.install_opener(opener)
@@ -582,9 +621,10 @@ def processInputMessages(sc, ms, ss):
             p = int(c.split(';')[2].split(':')[1])
             wt = WorkerThread(sc.getToAddr(), sc.getLoginUser(), sc.getNetType(), \
                               iq, oq, k, t, (ip, p), u.partition('/')[0])
+            # u include '/'
             ss[k] = (u, iq, oq)
             wt.start()
-        elif re.match(r'^Ack;[A-Z]{2,3};[a-z]{%d}$' % common.sessionIDLength, c): 
+        elif re.match(r'^Ack;[A-Z]{2,3};[a-z]{%d}$' % common.SESSION_ID_LENGTH, c): 
             # Ack
             k = c.split(';')[2]
             if k in ss.keys():
@@ -592,16 +632,9 @@ def processInputMessages(sc, ms, ss):
                 if mu == u:
                     iq.put(c)
         elif re.match(r'^Ack;IVA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                      % common.sessionIDLength, c):
-            # Ack
+                      % common.SESSION_ID_LENGTH, c):
+            # Ack;IVA
             k = c.split(';')[3]
-            if k in ss.keys():
-                (mu, iq, _) = ss[k]
-                if mu == u:
-                    iq.put(c)
-        elif re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' % common.sessionIDLength, c):
-            # Cannot
-            k = c.split(';')[2]
             if k in ss.keys():
                 (mu, iq, _) = ss[k]
                 if mu == u:
@@ -627,26 +660,28 @@ def main():
 
     # open server configuration file
     serverConf = ServerConf('./server.conf')
-
     # get network type
     netType = serverConf.getNetType()
     if netType == NET_TYPE_UDP_BLOCKED:
         # blocked
         print 'UDP is blocked by the firewall, QUIT!'
         return
-    
+    # get gtalk server's addr
+    gtalkServerAddr = serverConf.getGTalkServer()
     # get user info of xmpp(gtalk) 
     (user, passwd) = serverConf.getLoginInfo()
-    # wait for messages from xmpp
+
+    # wait for messages from xmpp server
     while True:
         try:
             # the outer 'while' is for connection lost.
-            cnx = xmppListen(user, passwd)
+            cnx = xmppListen(gtalkServerAddr, user, passwd)
             while True:
-                ret = cnx.Process(1)
-                if not ret:
+                if not cnx.Process(1):
                     print 'XMPP lost connection.'
                     break
+                # keep connection alive
+                cnx.sendPresence()
                 # process messages
                 processInputMessages(serverConf, messages, sessions)
                 processOutputMessage(cnx, sessions)
@@ -654,6 +689,8 @@ def main():
             quitNow = True
             print 'Quit Now...'
             break
+        except Exception, e:
+            print 'Catch exception:', e
 
 if __name__ == '__main__':
     main()

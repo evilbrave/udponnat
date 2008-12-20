@@ -23,10 +23,14 @@
 #                                                                           #
 #############################################################################
 
+import random, re, socket, Queue, time, select, getpass, sys, errno
+from threading import Thread
+
+import xmpp
+
+import common
 from stunclient import *
 from parseconf import *
-from threading import Thread
-import xmpp, random, re, socket, Queue, time, select, common, getpass, sys
 
 # global messages list
 messages = []
@@ -42,21 +46,26 @@ class ClientConf(ParseConf):
         t = self.getValue('net_type')
         return int(t)
     
-    def getStunServer(self):
-        addr = self.getValue('stun_server')
-        (h, _, p) = addr.partition(':')
-        if p == '':
-            return (h, 3478)
-        else:
-            return (h, int(p))
+    #def getStunServer(self):
+    #    addr = self.getValue('stun_server')
+    #    (h, _, p) = addr.partition(':')
+    #    if p == '':
+    #        return (h, 3478)
+    #    else:
+    #        return (h, int(p))
     
+    def getGTalkServer(self):
+        addr = self.getValue('gtalk_server')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
+
     def getLoginInfo(self):
         u = self.getValue('i')
         p = getpass.getpass('Password for %s: ' % u)
         return (u, p)
 
     def getServerUser(self):
-        return self.getValue('server_user')
+        return self.getValue('server_user') + '@gmail.com'
 
 def xmppMessageCB(cnx, msg):
     u = msg.getFrom()
@@ -66,10 +75,10 @@ def xmppMessageCB(cnx, msg):
         messages.append((str(u).strip(), str(m).strip()))
         #messages.append((unicode(u), unicode(m)))
 
-def xmppListen(user, passwd):
+def xmppListen(gtalkServerAddr, user, passwd):
     cnx = xmpp.Client('gmail.com', debug=[])
-    cnx.connect(server=('talk.google.com', 443))
-    cnx.auth(user, passwd, 'UDPonNAT')
+    cnx.connect(server=gtalkServerAddr)
+    cnx.auth(user, passwd, 'UDPonNAT_Client')
     cnx.sendInitPresence()
     cnx.RegisterHandler('message', xmppMessageCB)
     return cnx
@@ -103,6 +112,7 @@ def main():
     
     # create listened socket 
     listenSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
+    listenSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listenAddr = clientConf.getListenAddr()
     listenSock.bind(listenAddr)
 
@@ -112,19 +122,19 @@ def main():
     sc = STUNClient()
     (mappedIP, mappedPort) = sc.getMappedAddr(toSock)
 
+    # get gtalk server's addr
+    gtalkServerAddr = clientConf.getGTalkServer()
     # get user info of xmpp(gtalk) 
     (user, passwd) = clientConf.getLoginInfo()
     serverUser = clientConf.getServerUser()
 
     # send client hello
-    cnx = xmppListen(user, passwd)
-    cnx.send(xmpp.Message(serverUser, 'Hello;%d;%s:%d' \
-                                      % (netType, mappedIP, mappedPort)))
+    cnx = xmppListen(gtalkServerAddr, user, passwd)
+    cnx.send(xmpp.Message(serverUser, 'Hello;%d;%s:%d' % (netType, mappedIP, mappedPort)))
     # wait for reply
     ct = time.time()
-    while time.time() - ct < common.timeout:
-        ret = cnx.Process(1)
-        if not ret:
+    while time.time() - ct < common.TIMEOUT:
+        if not cnx.Process(1):
             print 'XMPP lost connection.'
             return
         # process messages
@@ -136,13 +146,12 @@ def main():
         return
 
     # process reply
-    if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' \
-                % common.sessionIDLength, content):
+    if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' % common.SESSION_ID_LENGTH, content):
         # Cannot
         print 'Failed to connect server: %s.' % content.split(';')[1]
         return
     elif re.match(r'^Do;IA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
+                  % common.SESSION_ID_LENGTH, content):
         # IA, prepare to connect server
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -159,7 +168,7 @@ def main():
         # wait for server's 'Welcome' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -172,14 +181,14 @@ def main():
         else:
             print 'Failed to connect server: Timeout.'
             return
-    elif re.match(r'^Do;IB;[a-z]{%d}$' % common.sessionIDLength, content):
+    elif re.match(r'^Do;IB;[a-z]{%d}$' % common.SESSION_ID_LENGTH, content):
         # IB, wait for server's request
         # parse server reply
         s = content.split(';')[2]
         # wait for server's 'Hi' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -195,7 +204,7 @@ def main():
             print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;IIA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
+                  % common.SESSION_ID_LENGTH, content):
         # IIA, prepare to connect server
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -212,7 +221,7 @@ def main():
         # wait for server's 'Welcome' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -226,7 +235,7 @@ def main():
             print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;IIB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
+                  % common.SESSION_ID_LENGTH, content):
         # IIB, punch and wait for server's request
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -245,7 +254,7 @@ def main():
         # wait for server's 'Hi' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -261,7 +270,7 @@ def main():
             print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;III;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
+                  % common.SESSION_ID_LENGTH, content):
         # III, prepare to connect server
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -278,7 +287,7 @@ def main():
         # wait for server's 'Welcome' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -292,7 +301,7 @@ def main():
             print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;IVA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
+                  % common.SESSION_ID_LENGTH, content):
         # IVA
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -317,7 +326,7 @@ def main():
         # wait for server's 'Hi' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -333,7 +342,7 @@ def main():
             print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;IVB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
+                  % common.SESSION_ID_LENGTH, content):
         # IVB
         # parse server reply
         ip = content.split(';')[2].split(':')[0]
@@ -346,10 +355,10 @@ def main():
         port = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
         # send client hi (udp) to a port range
-        bp = port - STUNClient.LocalRange
+        bp = port - common.LOCAL_RANGE
         if bp < 1:
             bp = 1
-        ep = port + STUNClient.LocalRange
+        ep = port + common.LOCAL_RANGE
         if ep > 65536:
             ep = 65536
         for p in range(bp, ep):
@@ -357,7 +366,7 @@ def main():
         # wait for server's 'Welcome' (udp)
         toSock.settimeout(1)
         ct = time.time()
-        while time.time() - ct < common.timeout:
+        while time.time() - ct < common.TIMEOUT:
             try:
                 (data, fro) = toSock.recvfrom(2048)
             except socket.timeout:
@@ -371,46 +380,103 @@ def main():
             print 'Failed to connect server: Timeout.'
             return
     elif re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
-        established = False
-        while re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                       % common.sessionIDLength, content):
-            # VA, prepare to connect server
-            print '.',
-            sys.stdout.flush()
-            # parse server reply
-            ip = content.split(';')[2].split(':')[0]
-            try:
-                socket.inet_aton(ip)
-            except socket.error:
-                # invalid ip
-                print 'Failed to connect server: Invalid Server Reply.'
-                return
-            p = int(content.split(';')[2].split(':')[1])
-            s = content.split(';')[3]
-            # send client hi (udp)
-            toSock.sendto('Hi;%s' % s, (ip, p))
-            # send Ack (xmpp)
+                  % common.SESSION_ID_LENGTH, content):
+        # VA
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to connect server: Invalid Server Reply.'
+            return
+        p = int(content.split(';')[2].split(':')[1])
+        s = content.split(';')[3]
+
+        while True:
+            # punch
+            toSock.sendto('Punch', (ip, p))
+            # tell server we've punched
             cnx.send(xmpp.Message(serverUser, 'Ack;VA;%s' % s))
+            # wait for DONE
+            ct = time.time()
+            while time.time() - ct < common.TIMEOUT:
+                if not cnx.Process(1):
+                    print 'XMPP lost connection.'
+                    return
+                # process messages
+                content = gotReply(messages, serverUser)
+                if content == 'Done;VASent;%s' % s:
+                    break
+            else:
+                print 'Failed to connect server: Timeout.'
+                return
+            # have we received server's hello?
+            toSock.setblocking(False)
+            established = False
+            while True:
+                try:
+                    (data, fro) = toSock.recvfrom(2048)
+                except socket.error, e:
+                    if e[0] != errno.EAGAIN and e[0] != 10035:
+                        raise e
+                    # EAGAIN
+                    break
+                # got some data
+                if data == 'Hi;%s' % s:
+                    toSock.sendto('Welcome;%s' % s, fro)
+                    serverAddr = fro
+                    established = True
+                    break
+            # is it ok?
+            if established:
+                break
+    elif re.match(r'^Do;VB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
+                  % common.SESSION_ID_LENGTH, content):
+        # VB
+        # parse server reply
+        ip = content.split(';')[2].split(':')[0]
+        try:
+            socket.inet_aton(ip)
+        except socket.error:
+            # invalid ip
+            print 'Failed to connect server: Invalid Server Reply.'
+            return
+        p = int(content.split(';')[2].split(':')[1])
+        s = content.split(';')[3]
+
+        # scan all ports of the server
+        portBegin = 1
+        while portBegin < 65536:
+            # try to connect server's port range
+            for p in range(portBegin, portBegin + common.SYM_SCAN_RANGE):
+                if p < 65536:
+                    # send client hi (udp)
+                    toSock.sendto('Hi;%s' % s, (ip, p))
+            portBegin = p + 1
+            # tell server we've sent Hi
+            cnx.send(xmpp.Message(serverUser, 'Ack;VB;%s' % s))
             # wait for any message, both udp and xmpp.
             toSock.setblocking(False)
+            established = False
             ct = time.time()
-            while time.time() - ct < common.timeout:
-                ret = cnx.Process(1)
-                if not ret:
+            while time.time() - ct < common.TIMEOUT:
+                if not cnx.Process(1):
                     print 'XMPP lost connection.'
                     return
                 # did we receive server's 'Welcome'(udp)?
                 try:
                     (data, fro) = toSock.recvfrom(2048)
                     # got some data
-                    if fro == (ip, p) and data == 'Welcome;%s' % s:
+                    if data == 'Welcome;%s' % s:
                         # connection established
-                        serverAddr = fro
+                        serverAddr = fro 
                         established = True
                         break
-                except socket.error:
-                    pass
+                except socket.error, e:
+                    if e[0] != errno.EAGAIN and e[0] != 10035:
+                        raise e
+                    # EAGAIN, ignore
                 # process messages
                 content = gotReply(messages, serverUser)
                 if content:
@@ -422,73 +488,7 @@ def main():
             if established:
                 break
         else:
-            if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' \
-                        % common.sessionIDLength, content):
-                # Cannot
-                print 'Failed to connect server: %s.' \
-                      % content.split(';')[1]
-                return
-            else:
-                # wrong reply
-                print 'Failed to connect server: Invalid Server Reply.'
-                return
-    elif re.match(r'^Do;VB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
-                  % common.sessionIDLength, content):
-        # VB, wait for server's request
-        established = False
-        # parse server reply
-        ip = content.split(';')[2].split(':')[0]
-        try:
-            socket.inet_aton(ip)
-        except socket.error:
-            # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
-        s = content.split(';')[3]
-        # scan
-        for p in range(common.symScanStart + 1, common.symScanStart + 65536):
-            # punch
-            toSock.sendto('Punch', (ip, p % 65536))
-            # should we tell server to connect?
-            if p % common.symScanRange == 0 or p % 65536 == common.symScanStart - 1:
-                print '.',
-                sys.stdout.flush()
-                # tell server to try to connect
-                cnx.send(xmpp.Message(serverUser, 'Ack;VB;%s' % s))
-                # wait for DONE
-                ct = time.time()
-                while time.time() - ct < common.timeout:
-                    ret = cnx.Process(1)
-                    if not ret:
-                        print 'XMPP lost connection.'
-                        return
-                    # process messages
-                    content = gotReply(messages, serverUser)
-                    if content == 'Done;VBSent;%s' % s:
-                        break
-                else:
-                    print 'Failed to connect server: Timeout.'
-                    return
-                # have we received server's hello?
-                toSock.setblocking(False)
-                while True:
-                    try:
-                        (data, fro) = toSock.recvfrom(2048)
-                    except socket.error:
-                        break
-                    # got some data
-                    if data == 'Hi;%s' % s:
-                        toSock.sendto('Welcome;%s' % s, fro)
-                        serverAddr = fro
-                        established = True
-                        break
-                # is it ok?
-                if established:
-                    break
-        else:
-            # tell server cannot established
-            cnx.send(xmpp.Message(serverUser, 'Cannot;Failed to try;%s' % s))
-            print 'Failed to connect server: Failed to try.'
+            print 'Failed to try.'
             return
     else:
         # wrong reply
@@ -507,7 +507,7 @@ def main():
         if len(es) != 0:
             # error
             print 'Transfer error.'
-            break
+            return
         if listenSock in rs:
             #print 'listenSock has got some data:', 
             # listenSock is ready for read
@@ -515,7 +515,9 @@ def main():
                 try:
                     (d, fromAddr) = listenSock.recvfrom(2048)
                     #print d
-                except socket.error:
+                except socket.error, e:
+                    if e[0] != errno.EAGAIN and e[0] != 10035:
+                        raise e
                     # EAGAIN
                     break
                 toSock.sendto(d, serverAddr)
@@ -524,15 +526,17 @@ def main():
             # toSock is ready for read
             while True:
                 try:
-                    (d, _) = toSock.recvfrom(2048)
+                    (d, a) = toSock.recvfrom(2048)
                     if d == '':
                         # preserve connection
                         continue
                     #print d
-                except socket.error:
+                except socket.error, e:
+                    if e[0] != errno.EAGAIN and e[0] != 10035:
+                        raise e
                     # EAGAIN
                     break
-                if fromAddr:
+                if fromAddr and a == serverAddr:
                     listenSock.sendto(d, fromAddr)
         # preserve connection
         t = time.time()
