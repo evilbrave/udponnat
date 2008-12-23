@@ -49,13 +49,10 @@ class ServerConf(ParseConf):
         t = self.getValue('net_type')
         return int(t)
     
-    #def getStunServer(self):
-    #    addr = self.getValue('stun_server')
-    #    (h, _, p) = addr.partition(':')
-    #    if p == '':
-    #        return (h, 3478)
-    #    else:
-    #        return (h, int(p))
+    def getSTUNServer(self):
+        addr = self.getValue('stun_server')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
     
     def getGTalkServer(self):
         addr = self.getValue('gtalk_server')
@@ -122,7 +119,7 @@ class WorkerThread(Thread):
     '''worker thread'''
     # srcUser without '/'
     def __init__(self, toAddr, i, myNetType, iQueue, oQueue, sessKey, \
-                 srcNetType, srcAddr, srcUser):
+                 srcNetType, srcAddr, srcUser, stunServerAddr):
         Thread.__init__(self)
         self.toAddr = toAddr
         self.i = i
@@ -133,6 +130,7 @@ class WorkerThread(Thread):
         self.srcNetType = srcNetType 
         self.srcAddr = srcAddr
         self.srcUser = srcUser
+        self.stunServerAddr = stunServerAddr
 
     def run(self):
         # prepare
@@ -167,7 +165,7 @@ class WorkerThread(Thread):
         # MUST settimeout before call getMappedAddr
         self.fromSock.settimeout(1)
         sc = STUNClient()
-        (self.myIP, self.myPort) = sc.getMappedAddr(self.fromSock)
+        (self.myIP, self.myPort) = sc.getMappedAddr(self.fromSock, self.stunServerAddr)
 
     def establish(self):
         # have server and client got the same mapped ip?
@@ -484,7 +482,7 @@ class WorkerThread(Thread):
         # get new socket's mapped addr
         newSock.settimeout(1)
         sc = STUNClient()
-        (mappedIP, mappedPort) = sc.getMappedAddr(newSock)
+        (mappedIP, mappedPort) = sc.getMappedAddr(newSock, self.stunServerAddr)
         # tell client the new addr (xmpp)
         self.sendXmppMessage('Do;IVB;%s:%d;%s' % (mappedIP, mappedPort, self.sessKey))
         # wait for client's 'Hi' (udp)
@@ -615,7 +613,7 @@ class WorkerThread(Thread):
         # use it
         f = urllib2.urlopen('http://udponnat.appspot.com/stat.py?serverType=%d&clientType=%d&digest=%s' % (self.myNetType, self.srcNetType, digest))
 
-def processInputMessages(sc, ms, ss):
+def processInputMessages(sc, ms, ss, stunServerAddr):
     while True:
         try:
             # FIFO
@@ -647,7 +645,7 @@ def processInputMessages(sc, ms, ss):
                 continue
             p = int(c.split(';')[2].split(':')[1])
             wt = WorkerThread(sc.getToAddr(), sc.getLoginUser(), sc.getNetType(), \
-                              iq, oq, k, t, (ip, p), u.partition('/')[0])
+                              iq, oq, k, t, (ip, p), u.partition('/')[0], stunServerAddr)
             # u include '/'
             ss[k] = (u, iq, oq)
             wt.start()
@@ -694,6 +692,8 @@ def main():
         # blocked
         print 'UDP is blocked by the firewall, QUIT!'
         return
+    # get stun server's addr
+    stunServerAddr = serverConf.getSTUNServer()
     # get gtalk server's addr
     gtalkServerAddr = serverConf.getGTalkServer()
     # get user info of xmpp(gtalk) 
@@ -711,7 +711,7 @@ def main():
                 # keep connection alive
                 cnx.sendPresence()
                 # process messages
-                processInputMessages(serverConf, messages, sessions)
+                processInputMessages(serverConf, messages, sessions, stunServerAddr)
                 processOutputMessage(cnx, sessions)
         except KeyboardInterrupt:
             quitNow = True

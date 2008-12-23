@@ -46,13 +46,10 @@ class ClientConf(ParseConf):
         t = self.getValue('net_type')
         return int(t)
     
-    #def getStunServer(self):
-    #    addr = self.getValue('stun_server')
-    #    (h, _, p) = addr.partition(':')
-    #    if p == '':
-    #        return (h, 3478)
-    #    else:
-    #        return (h, int(p))
+    def getSTUNServer(self):
+        addr = self.getValue('stun_server')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
     
     def getGTalkServer(self):
         addr = self.getValue('gtalk_server')
@@ -126,8 +123,9 @@ def main():
     # create socket and get mapped address
     toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
     toSock.settimeout(1)
+    stunServerAddr = clientConf.getSTUNServer()
     sc = STUNClient()
-    (mappedIP, mappedPort) = sc.getMappedAddr(toSock)
+    (mappedIP, mappedPort) = sc.getMappedAddr(toSock, stunServerAddr)
 
     # get gtalk server's addr
     gtalkServerAddr = clientConf.getGTalkServer()
@@ -326,7 +324,7 @@ def main():
         # get new socket's mapped addr
         toSock.settimeout(1)
         sc = STUNClient()
-        (mappedIP, mappedPort) = sc.getMappedAddr(toSock)
+        (mappedIP, mappedPort) = sc.getMappedAddr(toSock, stunServerAddr)
         # tell server the new addr (xmpp)
         cnx.send(xmpp.Message(serverUser, 'Ack;IVA;%s:%d;%s' % (mappedIP, mappedPort, s)))
         # wait for server's 'Hi' (udp)

@@ -26,6 +26,7 @@
 import socket, struct, time, re
 
 import common
+from parseconf import *
 
 # network types
 NET_TYPE_OPENED = 0
@@ -248,7 +249,7 @@ class STUNClient(object):
         self.sock = None
         return netType
 
-    def getMappedAddr(self, sock, stunServer=('stun.l.google.com', 19302)):
+    def getMappedAddr(self, sock, stunServer):
         mappedIP = ''
 
         # make request packet
@@ -643,9 +644,21 @@ class STUNClient(object):
         elif t == NET_TYPE_UDP_BLOCKED:
             return 'Blocked(%d)' % NET_TYPE_UDP_BLOCKED
 
+class STUNClientConf(ParseConf):
+    '''stunclient configuration'''
+    def getSTUNServer(self):
+        addr = self.getValue('stun_server')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
+
+    def getHttpServer(self):
+        addr = self.getValue('http_server')
+        (h, _, p) = addr.partition(':')
+        return (h, int(p))
+
 if __name__ == '__main__':
+    scc = STUNClientConf('./stunclient.conf')
     sc = STUNClient()
-    #sc.setServerAddr(('stunserver.org', 3478))
-    #sc.setServerAddr(('stun.ekiga.net', 3478))
-    sc.setServerAddr(('stun.iptel.org', 3478))
+    sc.setServerAddr(scc.getSTUNServer())
+    sc.setHttpServerConnectable(scc.getHttpServer())
     print 'NET TYPE:', sc.netType2String(sc.getNetType())
