@@ -95,6 +95,13 @@ def gotReply(ms, user):
         return c
     return None
 
+class ConnectError(Exception):
+    def __init__(self, reason):
+        self.reason = reason
+
+    def __str__(self):
+        return '<Connect Error: %s>' % self.reason
+
 def main():
     listenAddr = None
     serverAddr = None
@@ -135,21 +142,18 @@ def main():
     ct = time.time()
     while time.time() - ct < common.TIMEOUT:
         if not cnx.Process(1):
-            print 'XMPP lost connection.'
-            return
+            raise ConnectError('XMPP lost connection')
         # process messages
         content = gotReply(messages, serverUser)
         if content:
             break
     else:
-        print 'Failed to connect server: Timeout.'
-        return
+        raise ConnectError('Timeout')
 
     # process reply
     if re.match(r'^Cannot;[a-zA-Z0-9_\ \t]+;[a-z]{%d}$' % common.SESSION_ID_LENGTH, content):
         # Cannot
-        print 'Failed to connect server: %s.' % content.split(';')[1]
-        return
+        raise ConnectError(content.split(';')[1])
     elif re.match(r'^Do;IA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # IA, prepare to connect server
@@ -159,11 +163,11 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
+            raise ConnectError('Invalid Server Reply')
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
         # send client hi (udp)
+        toSock.setblocking(True)
         toSock.sendto('Hi;%s' % s, (ip, p))
         # wait for server's 'Welcome' (udp)
         toSock.settimeout(1)
@@ -179,8 +183,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to connect server: Timeout.'
-            return
+            raise ConnectError('Timeout')
     elif re.match(r'^Do;IB;[a-z]{%d}$' % common.SESSION_ID_LENGTH, content):
         # IB, wait for server's request
         # parse server reply
@@ -198,11 +201,11 @@ def main():
                 # connection established
                 serverAddr = fro
                 # send client Welcome (udp)
+                toSock.setblocking(True)
                 toSock.sendto('Welcome;%s' % s, serverAddr)
                 break
         else:
-            print 'Failed to connect server: Timeout.'
-            return
+            raise ConnectError('Timeout')
     elif re.match(r'^Do;IIA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # IIA, prepare to connect server
@@ -212,11 +215,11 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
+            raise ConnectError('Invalid Server Reply')
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
         # send client hi (udp)
+        toSock.setblocking(True)
         toSock.sendto('Hi;%s' % s, (ip, p))
         # wait for server's 'Welcome' (udp)
         toSock.settimeout(1)
@@ -232,8 +235,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to connect server: Timeout.'
-            return
+            raise ConnectError('Timeout')
     elif re.match(r'^Do;IIB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # IIB, punch and wait for server's request
@@ -243,11 +245,11 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
+            raise ConnectError('Invalid Server Reply')
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
         # punch
+        toSock.setblocking(True)
         toSock.sendto('Punch', (ip, p))
         # send Ack (xmpp)
         cnx.send(xmpp.Message(serverUser, 'Ack;IIB;%s' % s))
@@ -264,11 +266,11 @@ def main():
                 # connection established
                 serverAddr = fro
                 # send client Welcome (udp)
+                toSock.setblocking(True)
                 toSock.sendto('Welcome;%s' % s, serverAddr)
                 break
         else:
-            print 'Failed to connect server: Timeout.'
-            return
+            raise ConnectError('Timeout')
     elif re.match(r'^Do;III;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # III, prepare to connect server
@@ -278,13 +280,15 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
+            raise ConnectError('Invalid Server Reply')
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
-        # send client hi (udp)
-        toSock.sendto('Hi;%s' % s, (ip, p))
-        # wait for server's 'Welcome' (udp)
+        # punch
+        toSock.setblocking(True)
+        toSock.sendto('Punch', (ip, p))
+        # send Ack (xmpp)
+        cnx.send(xmpp.Message(serverUser, 'Ack;III;%s' % s))
+        # wait for server's 'Hi' (udp)
         toSock.settimeout(1)
         ct = time.time()
         while time.time() - ct < common.TIMEOUT:
@@ -293,13 +297,15 @@ def main():
             except socket.timeout:
                 continue
             # got some data
-            if fro == (ip, p) and data == 'Welcome;%s' % s:
+            if fro == (ip, p) and data == 'Hi;%s' % s:
                 # connection established
                 serverAddr = fro
+                # send client Welcome (udp)
+                toSock.setblocking(True)
+                toSock.sendto('Welcome;%s' % s, serverAddr)
                 break
         else:
-            print 'Failed to connect server: Timeout.'
-            return
+            raise ConnectError('Timeout')
     elif re.match(r'^Do;IVA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # IVA
@@ -309,13 +315,13 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
+            raise ConnectError('Invalid Server Reply')
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
         # new socket
         toSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
         # punch
+        toSock.setblocking(True)
         toSock.sendto('Punch', (ip, p))
         # get new socket's mapped addr
         toSock.settimeout(1)
@@ -336,11 +342,11 @@ def main():
                 # connection established
                 serverAddr = fro
                 # send client Welcome (udp)
+                toSock.setblocking(True)
                 toSock.sendto('Welcome;%s' % s, serverAddr)
                 break
         else:
-            print 'Failed to connect server: Timeout.'
-            return
+            raise ConnectError('Timeout')
     elif re.match(r'^Do;IVB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # IVB
@@ -350,8 +356,7 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
+            raise ConnectError('Invalid Server Reply')
         port = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
         # send client hi (udp) to a port range
@@ -361,6 +366,7 @@ def main():
         ep = port + common.LOCAL_RANGE
         if ep > 65536:
             ep = 65536
+        toSock.setblocking(True)
         for p in range(bp, ep):
             toSock.sendto('Hi;%s' % s, (ip, p))
         # wait for server's 'Welcome' (udp)
@@ -377,8 +383,7 @@ def main():
                 serverAddr = fro
                 break
         else:
-            print 'Failed to connect server: Timeout.'
-            return
+            raise ConnectError('Timeout')
     elif re.match(r'^Do;VA;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # VA
@@ -388,13 +393,13 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
+            raise ConnectError('Invalid Server Reply')
         p = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
-
+        # for all ports
         while True:
             # punch
+            toSock.setblocking(True)
             toSock.sendto('Punch', (ip, p))
             # tell server we've punched
             cnx.send(xmpp.Message(serverUser, 'Ack;VA;%s' % s))
@@ -402,15 +407,13 @@ def main():
             ct = time.time()
             while time.time() - ct < common.TIMEOUT:
                 if not cnx.Process(1):
-                    print 'XMPP lost connection.'
-                    return
+                    raise ConnectError('XMPP lost connection')
                 # process messages
                 content = gotReply(messages, serverUser)
                 if content == 'Done;VASent;%s' % s:
                     break
             else:
-                print 'Failed to connect server: Timeout.'
-                return
+                raise ConnectError('Timeout')
             # have we received server's hello?
             toSock.setblocking(False)
             established = False
@@ -424,6 +427,7 @@ def main():
                     break
                 # got some data
                 if data == 'Hi;%s' % s:
+                    toSock.setblocking(True)
                     toSock.sendto('Welcome;%s' % s, fro)
                     serverAddr = fro
                     established = True
@@ -440,30 +444,31 @@ def main():
             socket.inet_aton(ip)
         except socket.error:
             # invalid ip
-            print 'Failed to connect server: Invalid Server Reply.'
-            return
-        p = int(content.split(';')[2].split(':')[1])
+            raise ConnectError('Invalid Server Reply')
+        srcPort = int(content.split(';')[2].split(':')[1])
         s = content.split(';')[3]
-
         # scan all ports of the server
         portBegin = 1
         while portBegin < 65536:
             # try to connect server's port range
+            toSock.setblocking(True)
             for p in range(portBegin, portBegin + common.SYM_SCAN_RANGE):
                 if p < 65536:
                     # send client hi (udp)
-                    toSock.sendto('Hi;%s' % s, (ip, p))
+                    port = (p + srcPort - common.SYM_SCAN_PRE_OFFSET) % 65536
+                    toSock.sendto('Hi;%s' % s, (ip, port))
             portBegin = p + 1
             # tell server we've sent Hi
             cnx.send(xmpp.Message(serverUser, 'Ack;VB;%s' % s))
+            #print 'Ack Sent, end port = %d.' % port
+            #cnx.sendPresence()
             # wait for any message, both udp and xmpp.
             toSock.setblocking(False)
             established = False
             ct = time.time()
             while time.time() - ct < common.TIMEOUT:
                 if not cnx.Process(1):
-                    print 'XMPP lost connection.'
-                    return
+                    raise ConnectError('XMPP lost connection')
                 # did we receive server's 'Welcome'(udp)?
                 try:
                     (data, fro) = toSock.recvfrom(2048)
@@ -482,18 +487,15 @@ def main():
                 if content:
                     break
             else:
-                print 'Failed to connect server: Timeout.'
-                return
+                raise ConnectError('Timeout')
             # is it ok?
             if established:
                 break
         else:
-            print 'Failed to try.'
-            return
+            raise ConnectError('Failed to try')
     else:
         # wrong reply
-        print 'Failed to connect server: Invalid Server Reply.'
-        return
+        raise ConnectError('Invalid Server Reply')
 
     print 'Connection established.'
     # non-blocking IO

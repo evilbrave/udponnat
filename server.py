@@ -299,6 +299,7 @@ class WorkerThread(Thread):
                 continue
             # got some data
             if data == 'Hi;%s' % self.sessKey:
+                sock.setblocking(True)
                 sock.sendto('Welcome;%s' % self.sessKey, fro)
                 self.srcAddr = fro
                 return
@@ -311,6 +312,7 @@ class WorkerThread(Thread):
         # tell client to wait for udp request
         self.sendXmppMessage('Do;IB;%s' % self.sessKey)
         # try to send udp packet
+        sock.setblocking(True)
         sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
         sock.settimeout(1)
         ct = time.time()
@@ -329,6 +331,7 @@ class WorkerThread(Thread):
     def establishIIA(self, addr, sock):
         #print 'establishIIA()'
         # punch
+        sock.setblocking(True)
         sock.sendto('Punch', self.srcAddr)
         # tell client to connect
         self.sendXmppMessage('Do;IIA;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
@@ -342,6 +345,7 @@ class WorkerThread(Thread):
                 continue
             # got some data
             if data == 'Hi;%s' % self.sessKey:
+                sock.setblocking(True)
                 sock.sendto('Welcome;%s' % self.sessKey, fro)
                 self.srcAddr = fro
                 return
@@ -366,6 +370,7 @@ class WorkerThread(Thread):
             # timeout
             raise EstablishError('Timeout')
         # try to send udp packet
+        sock.setblocking(True)
         sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
         sock.settimeout(1)
         ct = time.time()
@@ -384,10 +389,26 @@ class WorkerThread(Thread):
     def establishIII(self, addr, sock):
         #print 'establishIII()'
         # punch
+        sock.setblocking(True)
         sock.sendto('Punch', self.srcAddr)
-        # tell client to connect
+        # tell client to do punch
         self.sendXmppMessage('Do;III;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
-        # wait for udp packet
+        # wait for Ack
+        ct = time.time()
+        while time.time() - ct < common.TIMEOUT:
+            m = self.waitXmppMessage()
+            if not m:
+                continue
+            # got message
+            if m == 'Ack;III;%s' % self.sessKey:
+                break
+        else:
+            # timeout
+            raise EstablishError('Timeout')
+        # try to send udp packet
+        sock.setblocking(True)
+        sock.sendto('Hi;%s' % self.sessKey, self.srcAddr)
+        # wait for Welcome
         sock.settimeout(1)
         ct = time.time()
         while time.time() - ct < common.TIMEOUT:
@@ -396,8 +417,7 @@ class WorkerThread(Thread):
             except socket.timeout:
                 continue
             # got some data
-            if fro == self.srcAddr and data == 'Hi;%s' % self.sessKey:
-                sock.sendto('Welcome;%s' % self.sessKey, fro)
+            if fro == self.srcAddr and data == 'Welcome;%s' % self.sessKey:
                 return
         else:
             # timeout
@@ -435,6 +455,7 @@ class WorkerThread(Thread):
         ep = port + common.LOCAL_RANGE
         if ep > 65536:
             ep = 65536
+        sock.setblocking(True)
         for p in range(bp, ep):
             sock.sendto('Hi;%s' % self.sessKey, (ip, p))
         # wait for Welcome
@@ -458,6 +479,7 @@ class WorkerThread(Thread):
         # new socket
         newSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, 0)
         # punch
+        newSock.setblocking(True)
         newSock.sendto('Punch', self.srcAddr)
         # get new socket's mapped addr
         newSock.settimeout(1)
@@ -476,6 +498,7 @@ class WorkerThread(Thread):
             # got some data
             if fro == self.srcAddr and data == 'Hi;%s' % self.sessKey:
                 # send client Welcome (udp)
+                newSock.setblocking(True)
                 newSock.sendto('Welcome;%s' % self.sessKey, fro)
                 # !!! return newSock
                 return newSock
@@ -502,11 +525,13 @@ class WorkerThread(Thread):
         # scan all ports of the server
         portBegin = 1
         while portBegin < 65536:
+            sock.setblocking(True)
             # try to connect server's port range
             for p in range(portBegin, portBegin + common.SYM_SCAN_RANGE):
                 if p < 65536:
                     # send client hi (udp)
-                    sock.sendto('Hi;%s' % self.sessKey, (self.srcAddr[0], p))
+                    port = (p + self.srcAddr[1] - common.SYM_SCAN_PRE_OFFSET) % 65536
+                    sock.sendto('Hi;%s' % self.sessKey, (self.srcAddr[0], port))
             portBegin = p + 1
             # tell server we've sent Hi
             self.sendXmppMessage('Done;VASent;%s' % self.sessKey)
@@ -542,6 +567,7 @@ class WorkerThread(Thread):
         #print 'establishVB()'
         while True:
             # punch
+            sock.setblocking(True)
             sock.sendto('Punch', self.srcAddr)
             # tell client do VB
             self.sendXmppMessage('Do;VB;%s:%d;%s' % (addr[0], addr[1], self.sessKey))
@@ -569,6 +595,7 @@ class WorkerThread(Thread):
                     break
                 # got some data
                 if fro == self.srcAddr and data == 'Hi;%s' % self.sessKey:
+                    sock.setblocking(True)
                     sock.sendto('Welcome;%s' % self.sessKey, fro)
                     return
 
@@ -600,7 +627,7 @@ def processInputMessages(sc, ms, ss):
         if u.partition('/')[0] not in sc.getAllowedUser():
             continue
         # process content 
-        #print 'content:', c
+        #print 'Input xmpp message:', c
         if re.match(r'^Hello;\d+;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$', c):
             # client hello
             iq = Queue.Queue()
@@ -651,6 +678,7 @@ def processOutputMessage(cnx, ss):
             except Queue.Empty:
                 break
             # send
+            #print 'Output xmpp message:', m
             cnx.send(xmpp.Message(u, m))
 
 def main():

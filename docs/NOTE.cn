@@ -17,7 +17,10 @@
           注:通知包含一个session key,下同.
         II,如果server为Restricted,向client的IP:PORT发送一个包打洞,然后xmpp通知client连接server的IP:PORT.
            如果client为Restricted,xmpp通知client向server的IP:PORT打洞and then xmpp tell server并准备接受连接.
-        III,向client的IP:PORT发送一个包打洞,然后xmpp通知client连接server的IP:PORT.
+        III,向client的IP:PORT发送一个包打洞,然后xmpp通知client,向server的IP:PORT发送一个包打洞,然后xmpp通知server,server连接client的IP:PORT.
+        -III,向client的IP:PORT发送一个包打洞,然后xmpp通知client连接server的IP:PORT.
+            遇到一个问题,两台nat设备,都是Port Restrict类型,但只能单方向通,就是A可以做Server但不能做Client,后发现是因为A会对来自B的udp打洞包回复ICMP包,导致B不能成功打洞,这是一个会广泛影响各种须打洞类型nat设备的问题,可以作为nat设备的一个基本特性.
+            这里的简单解决办法是试一下反方向,寄希望于另一端设备不会回ICMP包.
         IV,如果server为Port Restricted,xmpp通知client创建新socket,绑定新端口,listen,向server的IP:PORT打洞同时获取新映射地址,然后将新的映射地址xmpp发送到server,server试图连接client的一个port段.
            如果client为Port Restricted,server创建新socket,绑定新端口,listen,向client打洞同时获取新映射地址,然后将新的映射地址xmpp通知client,client试图连接server的一个port段.
         V,如果server为Port Restricted,xmpp通知client(Do),#client向server的IP:PORT打洞,然后xmpp通知server(Ack),随后server试图连接client的一个port区域PR1并在发送完连接请求(UDP:Hi)后通过xmpp告诉client(Done;VASent)并同时等待udp和xmpp消息,之后client检查udp socket是否收到server的udp包,如收到则回复(UDP:Welcome)连接建立,否则继续重复#开始步骤直到遍历完整个client的所有port.
@@ -48,6 +51,8 @@
         client cmd:
             * II
             Ack;IIB;SESSID
+            * III
+            Ack;III;SESSID
             * IV
             Ack;IVA;IP:PORT;SESSID
             * V
