@@ -649,16 +649,26 @@ class STUNClientConf(ParseConf):
     def getSTUNServer(self):
         addr = self.getValue('stun_server')
         (h, _, p) = addr.partition(':')
+        if p == '':
+            return (h, common.STUN_DEF_PORT)
         return (h, int(p))
 
     def getHttpServer(self):
         addr = self.getValue('http_server')
         (h, _, p) = addr.partition(':')
+        if p == '':
+            return (h, common.HTTP_DEF_PORT)
         return (h, int(p))
 
 if __name__ == '__main__':
     scc = STUNClientConf('./stunclient.conf')
     sc = STUNClient()
-    sc.setServerAddr(scc.getSTUNServer())
+    stunServerAddr = scc.getSTUNServer()
+    sc.setServerAddr(stunServerAddr)
     sc.setHttpServerConnectable(scc.getHttpServer())
-    print 'NET TYPE:', sc.netType2String(sc.getNetType())
+    netType = sc.getNetType()
+    if netType == NET_TYPE_UDP_BLOCKED:
+        print 'UDP is blocked or The STUN server(%s: %d) is NOT available.' \
+              % (stunServerAddr[0], stunServerAddr[1])
+    else:
+        print 'NET TYPE:', sc.netType2String(netType)

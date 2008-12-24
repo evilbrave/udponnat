@@ -49,6 +49,8 @@ class ClientConf(ParseConf):
     def getSTUNServer(self):
         addr = self.getValue('stun_server')
         (h, _, p) = addr.partition(':')
+        if p == '':
+            return (h, common.STUN_DEF_PORT)
         return (h, int(p))
     
     def getGTalkServer(self):
