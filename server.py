@@ -706,6 +706,7 @@ def main():
         try:
             # the outer 'while' is for connection lost.
             cnx = xmppListen(gtalkServerAddr, user, passwd)
+            print 'UDPonNAT starts to listen.'
             while True:
                 if not cnx.Process(1):
                     print 'XMPP lost connection.'

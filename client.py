@@ -435,6 +435,8 @@ def main():
             # is it ok?
             if established:
                 break
+            print '.',
+            sys.stdout.flush()
     elif re.match(r'^Do;VB;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5};[a-z]{%d}$' \
                   % common.SESSION_ID_LENGTH, content):
         # VB
@@ -491,6 +493,8 @@ def main():
             # is it ok?
             if established:
                 break
+            print '.',
+            sys.stdout.flush()
         else:
             raise ConnectError('Failed to try')
     else:
